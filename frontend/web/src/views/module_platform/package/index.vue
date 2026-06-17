@@ -245,8 +245,8 @@ const searchBarRef = ref<InstanceType<typeof FaSearchBar> | null>(null);
 const searchBarRules: Record<string, unknown> = {};
 
 const statusOptions = ref([
-  { label: "正常", value: "0" },
-  { label: "禁用", value: "1" },
+  { label: "正常", value: 0 },
+  { label: "禁用", value: 1 },
 ]);
 
 const pkgSearchItems = computed<SearchFormItem[]>(() => [

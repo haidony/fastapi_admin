@@ -79,3 +79,4 @@ frontend/app/*
 .plan/*
 CLAUDE.md
 AGENTS.md
+.codebuddy

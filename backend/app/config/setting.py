@@ -233,9 +233,9 @@ class Settings(BaseSettings):
     # ================================================= #
     # ******************* AI大模型配置 ****************** #
     # ================================================= #
-    OPENAI_BASE_URL: str = ""
     OPENAI_API_KEY: str = ""
     OPENAI_MODEL: str = ""
+    OPENAI_BASE_URL: str = ""  # API Base URL，如 https://api.minimax.chat/v1
 
     # ================================================= #
     # ******************* ChromaDB配置 ****************** #

@@ -23,7 +23,7 @@ class MenuModel(ModelMixin):
 
     __tablename__: str = "platform_menu"
     __table_args__: dict[str, str] = {"comment": "平台菜单表"}
-    __loader_options__: list[str] = ["roles"]
+    __loader_options__: list[str] = ["roles", "children"]
     __permission_strategy__: PermissionFilterStrategy = PermissionFilterStrategy.ROLE_BASED
 
     name: Mapped[str] = mapped_column(String(50), nullable=False, comment="菜单名称")
@@ -115,6 +115,7 @@ class MenuModel(ModelMixin):
         back_populates="parent",
         foreign_keys="MenuModel.parent_id",
         order_by="MenuModel.order",
+        lazy="selectin",
     )
     roles: Mapped[list["RoleModel"]] = relationship(
         secondary="sys_role_menus", back_populates="menus", lazy="selectin"

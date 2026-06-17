@@ -322,8 +322,8 @@ const searchBarRef = ref<InstanceType<typeof FaSearchBar> | null>(null);
 const searchBarRules: Record<string, unknown> = {};
 
 const statusOptions = ref([
-  { label: "启用", value: "0" },
-  { label: "停用", value: "1" },
+  { label: "启用", value: 0 },
+  { label: "停用", value: 1 },
 ]);
 
 const dictDataSearchItems = computed<SearchFormItem[]>(() => [

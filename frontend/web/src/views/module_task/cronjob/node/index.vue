@@ -13,6 +13,7 @@
       :show-search="true"
       :disabled-search="false"
       :default-expanded="false"
+      :button-left-limit="0"
       @search="handleSearchBarSearch"
       @reset="onResetSearch"
     />

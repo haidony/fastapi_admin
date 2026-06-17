@@ -359,7 +359,8 @@ class CRUDBase(Generic[ModelType, CreateSchemaType, UpdateSchemaType]):
         """
         try:
             obj_dict = data.model_dump(exclude_unset=True, exclude={"id"})
-            obj = await self._get_one(self.db, id=id, preload=[])
+            model_defaults = getattr(self.model, "__loader_options__", [])
+            obj = await self._get_one(self.db, id=id, preload=model_defaults)
             if not obj:
                 raise CustomException(msg="更新对象不存在")
 

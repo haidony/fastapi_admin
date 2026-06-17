@@ -234,12 +234,37 @@ class UserCreateSchema(CurrentUserUpdateSchema):
         return value
 
 
-class UserUpdateSchema(UserCreateSchema):
+class UserUpdateSchema(CurrentUserUpdateSchema):
     """更新"""
 
     model_config = ConfigDict(from_attributes=True)
 
-    last_login: DateTimeStr | None = Field(default=None, description="最后登录时间")
+    username: str | None = Field(default=None, max_length=32, description="用户名")
+    status: int | None = Field(default=None, ge=0, le=1, description="状态(0:正常 1:禁用)")
+    description: str | None = Field(default=None, max_length=255, description="备注")
+    dept_id: int | None = Field(default=None, description="部门ID")
+    role_ids: list[int] | None = Field(default=[], description="角色ID列表")
+    position_ids: list[int] | None = Field(default=[], description="岗位ID列表")
+
+    @field_validator("status")
+    @classmethod
+    def validate_status(cls, value: int | None):
+        """校验状态：仅支持 0(正常)、1(禁用)"""
+        if value is not None and value not in {0, 1}:
+            raise ValueError("状态仅支持 0(正常) 或 1(禁用)")
+        return value
+
+    @field_validator("username")
+    @classmethod
+    def validate_username(cls, value: str | None):
+        """校验账号：字母开头，2-32 位"""
+        if not value:
+            return value
+        v = value.strip()
+        import re
+        if not re.match(r"^[A-Za-z][A-Za-z0-9_.-]{1,31}$", v):
+            raise ValueError("账号需以字母开头，2-32 位，仅允许字母、数字、_ . -")
+        return v
 
 
 class UserOutSchema(UserUpdateSchema, BaseSchema, UserBySchema, TenantBySchema):

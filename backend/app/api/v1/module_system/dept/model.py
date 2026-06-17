@@ -18,7 +18,7 @@ class DeptModel(ModelMixin, TenantMixin):
 
     __tablename__: str = "sys_dept"
     __table_args__ = (UniqueConstraint("tenant_id", "code"), {"comment": "部门表"})
-    __loader_options__: list[str] = []
+    __loader_options__: list[str] = ["children"]
     __permission_strategy__: PermissionFilterStrategy = PermissionFilterStrategy.DEPT_BASED
 
     name: Mapped[str] = mapped_column(String(64), nullable=False, comment="部门名称")

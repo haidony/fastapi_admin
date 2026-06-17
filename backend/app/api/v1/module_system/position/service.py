@@ -198,7 +198,7 @@ class PositionService:
         # 复制数据并转换状态
         data = position_list.copy()
         for item in data:
-            item["status"] = "启用" if item.get("status") == "0" else "停用"
+            item["status"] = "启用" if item.get("status") == 0 else "停用"
             item["creator"] = (
                 item.get("created_by", {}).get("name", "未知")
                 if isinstance(item.get("created_by"), dict)

@@ -291,8 +291,8 @@ const categoryOptions = ref([
 ]);
 
 const statusOptions = ref([
-  { label: "启用", value: "0" },
-  { label: "停用", value: "1" },
+  { label: "启用", value: 0 },
+  { label: "停用", value: 1 },
 ]);
 
 const pluginSearchItems = computed<SearchFormItem[]>(() => [

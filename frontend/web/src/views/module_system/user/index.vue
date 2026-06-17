@@ -375,7 +375,7 @@ const userDetailItems: DescriptionsItem[] = [
     label: "状态",
     prop: "status",
     tag: {
-      map: { "0": { type: "success", text: "启用" }, "1": { type: "danger", text: "停用" } },
+      map: { 0: { type: "success", text: "启用" }, 1: { type: "danger", text: "停用" } },
     },
   },
   { label: "上次登录时间", prop: "last_login" },
@@ -437,8 +437,8 @@ const userDialogFormItems = computed<FormItem[]>(() => [
     type: "radiogroup",
     props: {
       options: [
-        { label: "启用", value: "0" },
-        { label: "停用", value: "1" },
+        { label: "启用", value: 0 },
+        { label: "停用", value: 1 },
       ],
     },
   },
@@ -469,8 +469,8 @@ const searchBarRef = ref<InstanceType<typeof FaSearchBar> | null>(null);
 const searchBarRules: Record<string, unknown> = {};
 
 const statusOptions = ref([
-  { label: "启用", value: "0" },
-  { label: "停用", value: "1" },
+  { label: "启用", value: 0 },
+  { label: "停用", value: 1 },
 ]);
 
 const userSearchItems = computed<SearchFormItem[]>(() => [

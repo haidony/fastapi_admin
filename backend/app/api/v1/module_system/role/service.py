@@ -245,7 +245,7 @@ class RoleService:
         # 处理数据
         data = role_list.copy()
         for item in data:
-            item["status"] = "启用" if item.get("status") == "0" else "停用"
+            item["status"] = "启用" if item.get("status") == 0 else "停用"
             item["data_scope"] = data_scope_map.get(item.get("data_scope", 1), "")
 
         return ExcelUtil.export_list2excel(list_data=data, mapping_dict=mapping_dict)

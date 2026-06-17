@@ -107,7 +107,13 @@
 
     <!-- 订单详情弹窗 -->
     <FaDialog v-model="detailVisible" title="订单详情" width="560px" :show-footer="false">
-      <FaDescriptions v-if="orderDetail" :column="2" border :items="detailItems" />
+      <FaDescriptions
+        v-if="orderDetail"
+        :column="2"
+        border
+        :items="detailItems"
+        :data="orderDetail"
+      />
     </FaDialog>
 
     <!-- 驳回退款弹窗 -->
@@ -345,7 +351,13 @@ const orderDetail = ref<OrderTable | null>(null);
 async function showOrderDetail(row: OrderTable) {
   try {
     const res = await OrderAPI.detailOrder(row.id);
-    orderDetail.value = res.data.data as OrderTable;
+    const data = res.data.data as OrderTable;
+    if (data) {
+      data.amount = data.amount / 100;
+      data.order_type = orderTypeLabel(data.order_type);
+      data.pay_method = data.pay_method ? payMethodLabel(data.pay_method) : "";
+    }
+    orderDetail.value = data;
     detailVisible.value = true;
   } catch {
     /* ignore */
@@ -362,16 +374,30 @@ async function cancelOrder(orderId: number) {
   }
 }
 
-const detailItems = computed(() => {
+const detailItems = computed<
+  import("@/components/others/fa-descriptions/index.vue").DescriptionsItem[]
+>(() => {
   if (!orderDetail.value) return [];
   return [
     { label: "订单ID", prop: "id" },
     { label: "订单号", prop: "order_no" },
     { label: "租户ID", prop: "tenant_id" },
     { label: "套餐ID", prop: "package_id" },
-    { label: "订单类型", prop: "order_type", slot: "order_type" },
-    { label: "金额", prop: "amount", slot: "amount" },
-    { label: "状态", prop: "status", slot: "status" },
+    { label: "订单类型", prop: "order_type" },
+    { label: "金额", prop: "amount" },
+    {
+      label: "状态",
+      prop: "status",
+      tag: {
+        map: {
+          "0": { type: "warning", text: "待支付" },
+          "1": { type: "success", text: "已支付" },
+          "2": { type: "info", text: "已取消" },
+          "3": { type: "warning", text: "已退款" },
+          "4": { type: "danger", text: "已过期" },
+        },
+      },
+    },
     { label: "支付方式", prop: "pay_method" },
     { label: "支付时间", prop: "pay_time" },
     { label: "过期时间", prop: "expire_time" },

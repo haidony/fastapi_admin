@@ -13,8 +13,9 @@ from app.utils.common_util import (
 from .crud import MenuCRUD
 from .schema import (
     MenuCreateSchema,
-    MenuOutSchema,
+    MenuDetailOutSchema,
     MenuQueryParam,
+    MenuTreeOutSchema,
     MenuUpdateSchema,
 )
 
@@ -66,7 +67,7 @@ class MenuService:
             raise CustomException(msg="子菜单终端须与父菜单一致（均为 pc 或均为 app）")
 
     @classmethod
-    async def get_menu_detail_service(cls, auth: AuthSchema, id: int) -> MenuOutSchema:
+    async def get_menu_detail_service(cls, auth: AuthSchema, id: int) -> MenuDetailOutSchema:
         """
         获取菜单详情。
 
@@ -75,16 +76,16 @@ class MenuService:
         - id (int): 菜单ID。
 
         返回:
-        - dict: 菜单详情对象。
+        - MenuDetailOutSchema: 菜单详情对象。
         """
-        menu = await MenuCRUD(auth).get(id=id)
-        # 创建实例后再设置parent_name属性
-        menu_out = MenuOutSchema.model_validate(menu)
-        if menu and menu.parent_id:
+        menu = await MenuCRUD(auth).get(id=id, preload=["roles"])
+        if not menu:
+            raise CustomException(msg="菜单不存在")
+        menu_out = MenuDetailOutSchema.model_validate(menu)
+        if menu.parent_id:
             parent = await MenuCRUD(auth).get(id=menu.parent_id)
             if parent:
                 menu_out.parent_name = parent.name
-
         return menu_out
 
     @classmethod
@@ -109,13 +110,13 @@ class MenuService:
         menu_list = await MenuCRUD(auth).get_tree_list(
             search=search.__dict__, order_by=order_by
         )
-        # 转换为字典列表
-        menu_dict_list = [MenuOutSchema.model_validate(menu).model_dump() for menu in menu_list]
+        # 转换为字典列表（使用树形 Schema）
+        menu_dict_list = [MenuTreeOutSchema.model_validate(menu).model_dump() for menu in menu_list]
         # 使用traversal_to_tree构建树形结构
         return traversal_to_tree(menu_dict_list)
 
     @classmethod
-    async def create_menu_service(cls, auth: AuthSchema, data: MenuCreateSchema) -> MenuOutSchema:
+    async def create_menu_service(cls, auth: AuthSchema, data: MenuCreateSchema) -> MenuDetailOutSchema:
         """
         创建菜单。
 
@@ -124,7 +125,7 @@ class MenuService:
         - data (MenuCreateSchema): 创建参数对象。
 
         返回:
-        - dict: 创建的菜单对象。
+        - MenuDetailOutSchema: 创建的菜单对象。
         """
         search: dict[str, Any] = {}
         if data.title is not None:
@@ -139,11 +140,10 @@ class MenuService:
         await cls._validate_parent_child_client(auth, data.parent_id, data.client)
 
         new_menu = await MenuCRUD(auth).create(data=data)
-        new_menu_dict = MenuOutSchema.model_validate(new_menu)
-        return new_menu_dict
+        return MenuDetailOutSchema.model_validate(new_menu)
 
     @classmethod
-    async def update_menu_service(cls, auth: AuthSchema, id: int, data: MenuUpdateSchema) -> MenuOutSchema:
+    async def update_menu_service(cls, auth: AuthSchema, id: int, data: MenuUpdateSchema) -> MenuDetailOutSchema:
         """
         更新菜单。
 
@@ -153,7 +153,7 @@ class MenuService:
         - data (MenuUpdateSchema): 更新参数对象。
 
         返回:
-        - dict: 更新的菜单对象。
+        - MenuDetailOutSchema: 更新的菜单对象。
         """
         menu = await MenuCRUD(auth).get(id=id)
         if not menu:
@@ -172,6 +172,7 @@ class MenuService:
             parent_menu = await MenuCRUD(auth).get(id=data.parent_id)
             if not parent_menu:
                 raise CustomException(msg="更新失败，父级菜单不存在")
+
         new_menu = await MenuCRUD(auth).update(id=id, data=data)
 
         if data.status is not None:
@@ -179,8 +180,12 @@ class MenuService:
                 auth=auth, data=BatchSetAvailable(ids=[id], status=data.status)
             )
 
-        new_menu_dict = MenuOutSchema.model_validate(new_menu)
-        return new_menu_dict
+        menu_out = MenuDetailOutSchema.model_validate(new_menu)
+        if menu_out.parent_id:
+            parent = await MenuCRUD(auth).get(id=menu_out.parent_id)
+            if parent:
+                menu_out.parent_name = parent.name
+        return menu_out
 
     @classmethod
     async def delete_menu_service(cls, auth: AuthSchema, ids: list[int]) -> None:

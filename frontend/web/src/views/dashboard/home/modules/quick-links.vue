@@ -1,5 +1,5 @@
 <template>
-  <div class="fa-card p-5 pb-3 h-53 max-sm:h-48 flex flex-col">
+  <div class="fa-card p-5 pb-3 h-53 max-sm:h-53 flex flex-col">
     <div class="fa-card-header">
       <div class="title">
         <h4>

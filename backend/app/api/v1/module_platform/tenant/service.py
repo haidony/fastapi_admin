@@ -83,7 +83,7 @@ class TenantService:
             "password": PwdUtil.set_password_hash(password=password),
             "name": f"{tenant_obj.name}管理员",
             "tenant_id": tenant_obj.id,
-            "status": "0",
+            "status": 0,
             "is_superuser": False,
         }
         try:

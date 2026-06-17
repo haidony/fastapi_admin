@@ -109,7 +109,7 @@ class NoticeService:
             offset=0,
             limit=10,
             order_by=[{"id": "asc"}],
-            search={"status": "0"},
+            search={"status": 0},
             out_schema=NoticeOutSchema,
         )
 
