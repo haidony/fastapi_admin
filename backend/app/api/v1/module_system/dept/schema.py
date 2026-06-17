@@ -46,13 +46,22 @@ class DeptUpdateSchema(DeptCreateSchema):
     """部门更新模型"""
 
 
-class DeptOutSchema(DeptCreateSchema, BaseSchema):
-    """部门响应模型"""
+class DeptDetailOutSchema(DeptCreateSchema, BaseSchema):
+    """部门详情响应模型（不含 children，用于详情和更新）"""
 
     model_config = ConfigDict(from_attributes=True)
 
     parent_name: str | None = Field(default=None, max_length=64, description="父部门名称")
-    children: list["DeptOutSchema"] | None = Field(default=None, description="子部门列表")
+
+
+class DeptTreeOutSchema(DeptDetailOutSchema):
+    """部门树形响应模型（含 children，用于树形列表）"""
+
+    children: list["DeptTreeOutSchema"] | None = Field(default=None, description="子部门列表")
+
+
+# 兼容旧代码的别名（后续可逐步移除）
+DeptOutSchema = DeptDetailOutSchema
 
 
 class DeptQueryParam:

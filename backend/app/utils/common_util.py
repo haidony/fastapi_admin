@@ -357,29 +357,6 @@ class SqlalchemyUtil:
         return result
 
     @classmethod
-    def orm_to_schema(
-        cls,
-        obj: DeclarativeBase,
-        out_schema: type,
-        extra_fields: dict[str, Any] | None = None,
-    ) -> Any:
-        """
-        将 SQLAlchemy ORM 对象转换为 Pydantic Schema，只访问列属性避免触发 lazy load。
-
-        参数:
-        - obj (DeclarativeBase): ORM 对象实例。
-        - out_schema (type): Pydantic Schema 类。
-        - extra_fields (dict[str, Any]): 额外字段（如预加载的关系数据）。
-
-        返回:
-        - Any: Pydantic Schema 实例。
-        """
-        data = {c.name: getattr(obj, c.name) for c in obj.__table__.columns}
-        if extra_fields:
-            data.update(extra_fields)
-        return out_schema(**data)
-
-    @classmethod
     def get_server_default_null(
         cls, dialect_name: str, need_explicit_null: bool = True
     ) -> Null | None:

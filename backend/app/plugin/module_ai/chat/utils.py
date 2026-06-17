@@ -50,6 +50,7 @@ class AgnoFactory:
             model=OpenAILike(
                 id=settings.OPENAI_MODEL,
                 api_key=settings.OPENAI_API_KEY,
+                base_url=settings.OPENAI_BASE_URL,
                 temperature=self.AGENT_TEMPERATURE,
             ),
             members=[fastapiadmin_agent],

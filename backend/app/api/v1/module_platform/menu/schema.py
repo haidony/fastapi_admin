@@ -181,13 +181,22 @@ class MenuUpdateSchema(BaseModel):
         return menu_request_validator(self)
 
 
-class MenuOutSchema(MenuCreateSchema, BaseSchema):
-    """菜单响应模型"""
+class MenuDetailOutSchema(MenuCreateSchema, BaseSchema):
+    """菜单详情响应模型（不含 children，用于详情和更新）"""
 
     model_config = ConfigDict(from_attributes=True)
 
     parent_name: str | None = Field(default=None, max_length=50, description="父菜单名称")
-    children: list["MenuOutSchema"] | None = Field(default=None, description="子菜单列表")
+
+
+class MenuTreeOutSchema(MenuDetailOutSchema):
+    """菜单树形响应模型（含 children，用于树形列表）"""
+
+    children: list["MenuTreeOutSchema"] | None = Field(default=None, description="子菜单列表")
+
+
+# 兼容旧代码的别名（后续可逐步移除）
+MenuOutSchema = MenuDetailOutSchema
 
 
 class MenuQueryParam:

@@ -16,7 +16,7 @@
 """
 
 import builtins
-from collections.abc import Callable, Sequence
+from collections.abc import Sequence
 from datetime import datetime, timedelta
 from typing import TYPE_CHECKING, Any, Generic, TypeVar
 
@@ -127,34 +127,6 @@ class CRUDBase(Generic[ModelType, CreateSchemaType, UpdateSchemaType]):
         try:
             async with async_db_session() as rdb:
                 return await self._get_one(rdb, preload=preload, **kwargs)
-        except CustomException:
-            raise
-        except Exception as e:
-            raise CustomException(msg=f"获取查询失败: {e!s}")
-
-    async def get_with_convert(
-        self,
-        preload: list[str | Any] | None = None,
-        converter: Callable | None = None,
-        **kwargs,
-    ) -> Any | None:
-        """
-        根据条件获取单个对象，并在 session 内执行转换函数（避免 detached 对象问题）
-
-        参数:
-        - preload: 预加载关系
-        - converter: 转换函数，接受 ORM 对象返回转换后的数据
-        - **kwargs: 查询条件
-
-        返回:
-        - 转换后的数据或 None
-        """
-        try:
-            async with async_db_session() as rdb:
-                obj = await self._get_one(rdb, preload=preload, **kwargs)
-                if obj and converter:
-                    return converter(obj)
-                return obj
         except CustomException:
             raise
         except Exception as e:
