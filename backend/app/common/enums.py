@@ -44,6 +44,7 @@ class RedisInitKeyConfig(Enum):
 
     ACCESS_TOKEN = {"key": "access_token", "remark": "登录令牌信息"}
     REFRESH_TOKEN = {"key": "refresh_token", "remark": "刷新令牌信息"}
+    USER_SESSION = {"key": "user_session", "remark": "用户会话信息"}
     CAPTCHA_CODES = {"key": "captcha_codes", "remark": "图片验证码"}
     SYSTEM_CONFIG = {"key": "system_config", "remark": "系统配置"}
     TENANT_CONFIG = {"key": "tenant_config", "remark": "租户配置"}

@@ -51,7 +51,10 @@ class RequestLogMiddleware(BaseHTTPMiddleware):
 
     @staticmethod
     def _hydrate_session_id(request: Request) -> None:
-        """从 request.state.ctx 或 JWT 中提取 session_id 并写入 ctx（纯 side-effect）。"""
+        """从 request.state.ctx 或 JWT 中提取 session_id 并写入 ctx（纯 side-effect）。
+
+        JWT sub 现为纯 session_id 字符串，无需 JSON 解析。
+        """
         ctx = getattr(request.state, "ctx", None)
         if ctx:
             if ctx.session_id:
@@ -69,8 +72,7 @@ class RequestLogMiddleware(BaseHTTPMiddleware):
             payload = decode_access_token(token)
             if not payload or not hasattr(payload, "sub"):
                 return
-            user_info = json.loads(payload.sub)
-            sid = user_info.get("session_id")
+            sid = payload.sub
             if sid:
                 base = ctx or RequestContext()
                 request.state.ctx = replace(base, session_id=sid)
@@ -173,7 +175,7 @@ def _tenant_is_whitelisted(path: str) -> bool:
         any(path.startswith(p) for p in _TENANT_WHITELIST_PREFIXES)
 
 
-def _extract_tenant_from_token(request: Request) -> int | None:
+async def _extract_tenant_from_token(request: Request) -> int | None:
     token = _strip_bearer(request.headers.get("Authorization", ""))
     if not token:
         return None
@@ -181,10 +183,30 @@ def _extract_tenant_from_token(request: Request) -> int | None:
         payload = decode_access_token(token)
         if not payload or not hasattr(payload, "sub"):
             return None
-        user_info = json.loads(payload.sub)
+        session_id = payload.sub
+        user_info = None
+
+        # 从 Redis 读取完整会话信息（含 tenant_id）
+        redis = request.app.state.redis
+        raw = await await_redis_get(redis, session_id) if redis else None
+        if raw:
+            user_info = json.loads(raw)
+
         base = getattr(request.state, "ctx", None) or RequestContext()
         request.state.ctx = replace(base, jwt_payload=payload, jwt_user_info=user_info)
-        return user_info.get("tenant_id")
+        return user_info.get("tenant_id") if user_info else None
+    except Exception:
+        return None
+
+
+async def await_redis_get(redis, key: str) -> str | None:
+    """异步获取 Redis 键值（封装为可复用工具函数）。"""
+    from app.common.enums import RedisInitKeyConfig
+    from app.core.redis_crud import RedisCURD
+    try:
+        return await RedisCURD(redis).get(
+            f"{RedisInitKeyConfig.USER_SESSION.key}:{key}"
+        )
     except Exception:
         return None
 
@@ -198,7 +220,7 @@ class TenantMiddleware(BaseHTTPMiddleware):
         if request.method == "OPTIONS" or _tenant_is_whitelisted(path):
             return await call_next(request)
         try:
-            tenant_id = _extract_tenant_from_token(request)
+            tenant_id = await _extract_tenant_from_token(request)
             set_current_tenant(tenant_id)
         except Exception:
             logger.exception("租户中间件异常: path=%s", path)

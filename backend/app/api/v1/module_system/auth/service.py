@@ -263,16 +263,23 @@ class LoginService:
             login_type=login_type,
         ).model_dump_json()
 
+        # 会话信息存 Redis（完整 JSON），JWT sub 仅含 session_id
+        await RedisCURD(redis).set(
+            key=f"{RedisInitKeyConfig.USER_SESSION.key}:{session_id}",
+            value=session_info,
+            expire=int(refresh_expires.total_seconds()),
+        )
+
         access_token = create_access_token(
             payload=JWTPayloadSchema(
-                sub=session_info,
+                sub=session_id,
                 is_refresh=False,
                 exp=now + access_expires,
             )
         )
         refresh_token = create_access_token(
             payload=JWTPayloadSchema(
-                sub=session_info,
+                sub=session_id,
                 is_refresh=True,
                 exp=now + refresh_expires,
             )
@@ -309,9 +316,14 @@ class LoginService:
         if not token_payload.is_refresh:
             raise CustomException(msg="非法凭证，请传入刷新令牌")
 
-        session_info = json.loads(token_payload.sub)
-        session_id = session_info.get("session_id")
-        user_id = session_info.get("user_id")
+        session_id = token_payload.sub
+        session_info = await RedisCURD(redis).get(
+            f"{RedisInitKeyConfig.USER_SESSION.key}:{session_id}"
+        )
+        if not session_info:
+            raise CustomException(msg="会话已过期，请重新登录")
+
+        user_id = json.loads(session_info).get("user_id")
 
         if not session_id or not user_id:
             raise CustomException(msg="非法凭证,无法获取会话编号或用户ID")
@@ -327,11 +339,15 @@ class LoginService:
         refresh_expires = timedelta(seconds=settings.REFRESH_TOKEN_EXPIRE_MINUTES)
         now = datetime.now()
 
-        session_info_json = session_info if isinstance(session_info, str) else json.dumps(session_info)
+        # 延长会话信息 Redis TTL
+        await RedisCURD(redis).expire(
+            key=f"{RedisInitKeyConfig.USER_SESSION.key}:{session_id}",
+            expire=int(refresh_expires.total_seconds()),
+        )
 
         access_token = create_access_token(
             payload=JWTPayloadSchema(
-                sub=session_info_json,
+                sub=session_id,
                 is_refresh=False,
                 exp=now + access_expires,
             )
@@ -339,7 +355,7 @@ class LoginService:
 
         refresh_token_new = create_access_token(
             payload=JWTPayloadSchema(
-                sub=session_info_json,
+                sub=session_id,
                 is_refresh=True,
                 exp=now + refresh_expires,
             )
@@ -368,14 +384,14 @@ class LoginService:
     async def logout(redis: Redis, token: LogoutPayloadSchema) -> bool:
         """退出登录"""
         payload: JWTPayloadSchema = decode_access_token(token=token.token)
-        session_info = json.loads(payload.sub)
-        session_id = session_info.get("session_id")
+        session_id = payload.sub
 
         if not session_id:
             raise CustomException(msg="非法凭证,无法获取会话编号")
 
         await RedisCURD(redis).delete(f"{RedisInitKeyConfig.ACCESS_TOKEN.key}:{session_id}")
         await RedisCURD(redis).delete(f"{RedisInitKeyConfig.REFRESH_TOKEN.key}:{session_id}")
+        await RedisCURD(redis).delete(f"{RedisInitKeyConfig.USER_SESSION.key}:{session_id}")
 
         logger.info(f"用户退出登录成功,会话编号:{session_id}")
 
@@ -454,22 +470,28 @@ class LoginService:
         if not session_id or not session_info:
             raise CustomException(msg="会话已失效")
 
+        # 更新会话中的租户 ID 并写回 Redis
         session_info["tenant_id"] = tenant_id
-
+        refresh_expires = timedelta(seconds=settings.REFRESH_TOKEN_EXPIRE_MINUTES)
+        from app.core.redis_crud import RedisCURD
         from app.core.security import create_access_token
+
+        await RedisCURD(redis).set(
+            key=f"{RedisInitKeyConfig.USER_SESSION.key}:{session_id}",
+            value=json.dumps(session_info) if isinstance(session_info, dict) else session_info,
+            expire=int(refresh_expires.total_seconds()),
+        )
 
         access_expires = timedelta(seconds=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
         now = datetime.now()
 
         new_access_token = create_access_token(
             payload=JWTPayloadSchema(
-                sub=json.dumps(session_info),
+                sub=session_id,
                 is_refresh=False,
                 exp=now + access_expires,
             )
         )
-
-        from app.core.redis_crud import RedisCURD
 
         await RedisCURD(redis).set(
             key=f"{RedisInitKeyConfig.ACCESS_TOKEN.key}:{session_id}",
@@ -477,10 +499,9 @@ class LoginService:
             expire=int(access_expires.total_seconds()),
         )
 
-        refresh_expires = timedelta(seconds=settings.REFRESH_TOKEN_EXPIRE_MINUTES)
         new_refresh_token = create_access_token(
             payload=JWTPayloadSchema(
-                sub=json.dumps(session_info),
+                sub=session_id,
                 is_refresh=True,
                 exp=now + refresh_expires,
             )

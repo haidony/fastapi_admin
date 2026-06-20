@@ -58,11 +58,14 @@ async def get_current_tenant_id() -> int | None:
     """
     return _get_ctx_tenant_id()
 
-def _decode_token_info(token: str) -> tuple[dict, str]:
+async def _decode_token_info(token: str, redis: Redis) -> tuple[dict, str]:
     """解码 JWT token 返回 (user_info, session_id)
+
+    JWT sub 现为纯 session_id，完整会话信息从 Redis 读取。
 
     参数:
         token: JWT token 字符串
+        redis: Redis 连接
 
     返回:
         (user_info, session_id): 用户信息字典和会话 ID
@@ -71,11 +74,14 @@ def _decode_token_info(token: str) -> tuple[dict, str]:
     if not payload or not hasattr(payload, "is_refresh") or payload.is_refresh:
         raise CustomException(msg="非法凭证", code=10401, status_code=401)
 
-    online_user_info = payload.sub
-    user_info = (
-        online_user_info if isinstance(online_user_info, dict) else json.loads(online_user_info)
+    session_id = payload.sub
+    raw = await RedisCURD(redis).get(
+        f"{RedisInitKeyConfig.USER_SESSION.key}:{session_id}"
     )
-    session_id = user_info.get("session_id")
+    if not raw:
+        raise CustomException(msg="认证已失效", code=10401, status_code=401)
+
+    user_info = json.loads(raw)
     if not session_id:
         raise CustomException(msg="认证已失效", code=10401, status_code=401)
 
@@ -187,23 +193,15 @@ async def get_current_user(
     if token.startswith("Bearer"):
         token = token.split(" ")[1]
 
-    # 优先使用 TenantMiddleware 缓存在 request.state.ctx 中的 JWT 解码结果（避免重复解码）
+    # 优先使用 TenantMiddleware 缓存在 request.state.ctx 中的会话信息（避免重复 Redis 读取）
     ctx = getattr(request.state, "ctx", None)
-    cached_payload = ctx.jwt_payload if ctx else None
     cached_user_info = ctx.jwt_user_info if ctx else None
 
-    if cached_payload and cached_user_info:
-        payload = cached_payload
+    if cached_user_info:
         user_info = cached_user_info
     else:
-        payload = decode_access_token(token)
-        if not payload or not hasattr(payload, "is_refresh") or payload.is_refresh:
-            raise CustomException(msg="非法凭证", code=10401, status_code=401)
-
-        online_user_info = payload.sub
-        user_info = (
-            online_user_info if isinstance(online_user_info, dict) else json.loads(online_user_info)
-        )
+        # 降级路径：自行从 Redis 读取会话信息
+        user_info, _ = await _decode_token_info(token, redis)
 
     session_id = user_info.get("session_id")
     if not session_id:
@@ -277,7 +275,7 @@ async def _verify_token(
     if token.startswith("Bearer"):
         token = token.split(" ")[1]
 
-    user_info, session_id = _decode_token_info(token)
+    user_info, session_id = await _decode_token_info(token, redis)
     await _check_token_online(redis, session_id)
     await _try_sliding_refresh(redis, session_id)
 
