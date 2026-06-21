@@ -75,6 +75,9 @@ export interface InvoiceTable {
   bank_info?: string;
   address_info?: string;
   pdf_url?: string;
+  oss_license_pdf_url?: string;
+  api_response?: string;
+  description?: string;
   created_time?: string;
 }
 

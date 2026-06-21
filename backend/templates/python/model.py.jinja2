@@ -17,7 +17,7 @@ class {{ class_name }}Model(ModelMixin, TenantMixin, UserMixin):
     """
     __tablename__: str = '{{ table_name }}'
     __table_args__: dict[str, str] = {'comment': '{{ function_name }}'}
-    __loader_options__: list[str] = ["created_by", "updated_by", "deleted_by"{% if table.sub and not is_sub_entity %}, "{{ sub_rel_list_name }}"{% endif %}]
+    __loader_options__: list[str] = ["created_by", "updated_by", "deleted_by", "tenant_by"{% if table.sub and not is_sub_entity %}, "{{ sub_rel_list_name }}"{% endif %}]
 
 {% if not is_sub_entity %}
     {% for column in columns %}

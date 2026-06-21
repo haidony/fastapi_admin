@@ -124,7 +124,7 @@ def run_workflow_sync(
                 )
             for nid, fut in futures.items():
                 results[nid] = fut.result()
-    logger.info("工作流执行完成: nodes=%s", list(results.keys()))
+    logger.info("工作流执行完成: nodes={}", list(results.keys()))
     return {"node_results": results, "status": "completed"}
 
 

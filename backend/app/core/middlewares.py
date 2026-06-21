@@ -83,7 +83,7 @@ class RequestLogMiddleware(BaseHTTPMiddleware):
         start_time = time.time()
         self._hydrate_session_id(request)
 
-        logger.info("请求: %s %s | client=%s", request.method, request.url.path,
+        logger.info("请求: {} {} | client={}", request.method, request.url.path,
                      request.client.host if request.client else "unknown")
 
         try:
@@ -112,13 +112,13 @@ class RequestLogMiddleware(BaseHTTPMiddleware):
             )
 
             if should_block:
-                logger.warning("演示模式拦截: %s %s | ip=%s", request.method, path, request_ip)
+                logger.warning("演示模式拦截: {} {} | ip={}", request.method, path, request_ip)
                 return ErrorResponse(msg="演示环境，禁止操作")
 
             response = await call_next(request)
             process_time = round(time.time() - start_time, 5)
             response.headers["X-Process-Time"] = str(process_time)
-            logger.info("响应: %s | %.1fms", response.status_code, process_time * 1000)
+            logger.info("响应: {} | {:.1f}ms", response.status_code, process_time * 1000)
             return response
         except CustomException as e:
             logger.exception(f"中间件异常: {e!s}")
@@ -223,7 +223,7 @@ class TenantMiddleware(BaseHTTPMiddleware):
             tenant_id = await _extract_tenant_from_token(request)
             set_current_tenant(tenant_id)
         except Exception:
-            logger.exception("租户中间件异常: path=%s", path)
+            logger.exception("租户中间件异常: path={}", path)
         try:
             return await call_next(request)
         finally:

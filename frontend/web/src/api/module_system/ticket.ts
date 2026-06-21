@@ -51,7 +51,7 @@ export interface TicketTable extends BaseType {
   images?: string;
   reply?: string;
   assigned_id?: number;
-  assigned_by?: { id: number; name: string; avatar?: string };
+  assigned_by?: CommonType;
   status?: number;
   description?: string;
 }

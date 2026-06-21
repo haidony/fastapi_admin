@@ -109,7 +109,7 @@ class InitializeData:
 
             data = await self.__load_json(table_name)
             if not data:
-                logger.warning(f"⚠️  跳过 {table_name} 表，无初始化数据")
+                logger.info(f"⏭️  跳过 {table_name} 表，无初始化数据")
                 continue
 
             try:
@@ -117,7 +117,7 @@ class InitializeData:
                 if table_name in self._RECURSIVE_TABLES:
                     count = await db.execute(select(func.count()).select_from(model))
                     if count.scalar():
-                        logger.warning(f"⚠️  跳过 {table_name} 表数据初始化（表已有数据）")
+                        logger.info(f"⏭️  跳过 {table_name} 表数据初始化（表已有数据）")
                         continue
                     objs = self.__create_objects_with_children(data, model)
                     db.add_all(objs)
@@ -129,7 +129,7 @@ class InitializeData:
                 if table_name == "sys_dict_type":
                     count = await db.execute(select(func.count()).select_from(model))
                     if count.scalar():
-                        logger.warning(f"⚠️  跳过 {table_name} 表数据初始化（表已有数据）")
+                        logger.info(f"⏭️  跳过 {table_name} 表数据初始化（表已有数据）")
                         continue
                     objs = []
                     for item in data:
@@ -145,7 +145,7 @@ class InitializeData:
                 if table_name == "sys_dict_data":
                     count = await db.execute(select(func.count()).select_from(model))
                     if count.scalar():
-                        logger.warning(f"⚠️  跳过 {table_name} 表数据初始化（表已有数据）")
+                        logger.info(f"⏭️  跳过 {table_name} 表数据初始化（表已有数据）")
                         continue
                     objs = []
                     for item in data:
@@ -175,7 +175,7 @@ class InitializeData:
                 # 普通表：空表时插入，已有数据跳过
                 count = await db.execute(select(func.count()).select_from(model))
                 if count.scalar():
-                    logger.warning(f"⚠️  跳过 {table_name} 表数据初始化（表已有数据）")
+                    logger.info(f"⏭️  跳过 {table_name} 表数据初始化（表已有数据）")
                     continue
                 objs = [model(**item) for item in data]
                 db.add_all(objs)

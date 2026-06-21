@@ -53,7 +53,7 @@ def handle_exception(app: FastAPI) -> None:
     @app.exception_handler(CustomException)
     async def custom_exception_handler(request: Request, exc: CustomException) -> JSONResponse:
         logger.error(
-            "[自定义异常] %s %s | source=%s | code=%s | msg=%s | data=%s",
+            "[自定义异常] {} {} | source={} | code={} | msg={} | data={}",
             request.method, request.url.path,
             _tb_source(exc), exc.code, exc.msg, exc.data,
         )
@@ -62,7 +62,7 @@ def handle_exception(app: FastAPI) -> None:
     @app.exception_handler(HTTPException)
     async def http_exception_handler(request: Request, exc: HTTPException) -> JSONResponse:
         logger.error(
-            "[HTTP异常] %s %s | status_code=%s | detail=%s",
+            "[HTTP异常] {} {} | status_code={} | detail={}",
             request.method, request.url.path, exc.status_code, exc.detail,
         )
         return ErrorResponse(msg=exc.detail, status_code=exc.status_code)
@@ -74,7 +74,7 @@ def handle_exception(app: FastAPI) -> None:
         if isinstance(msg, str) and msg.startswith("Value error"):
             msg = msg[11:].lstrip(" ,")
         logger.error(
-            "[参数验证异常] %s %s | msg=%s | errors=%s",
+            "[参数验证异常] {} {} | msg={} | errors={}",
             request.method, request.url.path, msg, exc.errors(),
         )
         return ErrorResponse(msg=str(msg), status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, data=exc.body)
@@ -82,7 +82,7 @@ def handle_exception(app: FastAPI) -> None:
     @app.exception_handler(ResponseValidationError)
     async def response_validation_handler(request: Request, exc: ResponseValidationError) -> JSONResponse:
         logger.error(
-            "[响应验证异常] %s %s | errors=%s",
+            "[响应验证异常] {} {} | errors={}",
             request.method, request.url.path, exc.errors(),
         )
         return ErrorResponse(msg="服务器响应格式错误", status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, data=exc.body)
@@ -112,7 +112,7 @@ def handle_exception(app: FastAPI) -> None:
 
     @app.exception_handler(ValueError)
     async def value_exception_handler(request: Request, exc: ValueError) -> JSONResponse:
-        logger.error("[值异常] %s %s | msg=%s", request.method, request.url.path, exc)
+        logger.error("[值异常] {} {} | msg={}", request.method, request.url.path, exc)
         return ErrorResponse(msg=str(exc), status_code=status.HTTP_400_BAD_REQUEST)
 
 
@@ -120,7 +120,7 @@ def handle_exception(app: FastAPI) -> None:
     async def all_exception_handler(request: Request, exc: Exception) -> JSONResponse:
         exc_type = type(exc).__name__
         logger.error(
-            "[未捕获异常] %s %s | type=%s | detail=%s",
+            "[未捕获异常] {} {} | type={} | detail={}",
             request.method, request.url.path, exc_type, exc,
         )
         return ErrorResponse(msg="服务器内部错误", status_code=status.HTTP_500_INTERNAL_SERVER_ERROR)

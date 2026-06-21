@@ -46,7 +46,7 @@ const {{ class_name }}API = {
 
   batch{{ class_name }}(body: BatchType) {
     return request<ApiResponse>({
-      url: `${API_PATH}/available/setting`,
+      url: `${API_PATH}/status/batch`,
       method: "patch",
       data: body,
     });

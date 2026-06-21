@@ -22,7 +22,7 @@ async def _write_operation_log_async(log_data: dict) -> None:
                 _auth = AuthSchema(db=_session)
                 await OperationLogService(_auth).create(data=OperationLogCreateSchema(**log_data))
     except Exception:
-        logger.exception("操作日志写入失败: path=%s", log_data.get("request_path"))
+        logger.exception("操作日志写入失败: path={}", log_data.get("request_path"))
 
 
 class OperationLogRoute(APIRoute):
@@ -81,7 +81,7 @@ class OperationLogRoute(APIRoute):
                 }
                 response.background = BackgroundTask(_write_operation_log_async, log_data)
             except Exception:
-                logger.warning("操作日志采集异常: %s", request.url.path, exc_info=True)
+                logger.warning("操作日志采集异常: {}", request.url.path, exc_info=True)
             return response
 
         return custom_route_handler

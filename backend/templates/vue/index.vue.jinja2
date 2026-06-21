@@ -38,7 +38,8 @@
             :perm-delete="['{{ permission_prefix }}:delete']"
             :perm-patch="['{{ permission_prefix }}:patch']"
             :delete-loading="batchDeleting"
-            @add="openEditDialog('add')"
+            :create-loading="createLoading"
+            @add="handleAdd"
             @import="openImport"
             @export="openExport"
             @delete="handleBatchDelete"
@@ -286,6 +287,7 @@ const selectedIds = computed(() =>
   selectedRows.value.map((r) => r.id).filter((id): id is number => id != null && !Number.isNaN(id))
 );
 const batchDeleting = ref(false);
+const createLoading = ref(false);
 
 function onTableSelectionChange(rows: {{ class_name }}Table[]) {
   selectedRows.value = rows;
@@ -641,6 +643,15 @@ async function openDetailDialog(row: {{ class_name }}Table) {
   subTableData.value = (response.data.data as any)?.{{ sub_rel_list_name }} ?? [];
   {% endif %}
   dialogVisible.visible = true;
+}
+
+async function handleAdd() {
+  createLoading.value = true;
+  try {
+    await openEditDialog("add");
+  } finally {
+    createLoading.value = false;
+  }
 }
 
 async function openEditDialog(type: "add" | "edit", row?: {{ class_name }}Table) {

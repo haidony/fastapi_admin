@@ -29,7 +29,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[Any, Any]:
 
     try:
         await InitializeData().init_db()
-        logger.info("✅ %s数据库初始化完成", settings.DATABASE_TYPE)
+        logger.info("✅ {}数据库初始化完成", settings.DATABASE_TYPE)
         await import_modules_async(modules=settings.EVENT_LIST, desc="全局事件", app=app, status=True)
         logger.info("✅ 全局事件模块加载完成")
         await ParamsService.init_cache(redis=app.state.redis)
@@ -57,7 +57,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[Any, Any]:
             scheduler_ready=SchedulerUtil.is_running(), limiter_ready=True,
         )
     except Exception as e:
-        logger.error("❌ 应用初始化失败: %s", e)
+        logger.error("❌ 应用初始化失败: {}", e)
         raise SystemExit(1)
 
     yield
@@ -76,7 +76,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[Any, Any]:
         logger.info("✅ 数据库引擎连接池已释放")
         console_end()
     except Exception as e:
-        logger.error("❌ 应用关闭过程中发生错误: %s", e)
+        logger.error("❌ 应用关闭过程中发生错误: {}", e)
         raise SystemExit(1)
 
 

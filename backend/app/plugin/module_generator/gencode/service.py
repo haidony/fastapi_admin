@@ -119,7 +119,7 @@ class GenTableService:
             raise CustomException(msg="上级菜单须选择目录类型")
 
     @staticmethod
-    def _menu_route_first_segment(cls, parent_catalog_id: int | None, package_name: str, module_name: str | None) -> str:
+    def _menu_route_first_segment(parent_catalog_id: int | None, package_name: str, module_name: str | None) -> str:
         """前端页面路由首段（与菜单 ``route_path`` 第一段一致）。
 
         统一规则：始终使用分系统包名 ``module_xxx`` 作为路由首段。

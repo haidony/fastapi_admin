@@ -4,9 +4,9 @@ import io
 import pandas as pd
 from fastapi import UploadFile
 
-from app.api.v1.module_system.auth.schema import AuthSchema
-from app.core.base_schema import BatchSetAvailable
+from app.core.base_schema import AuthSchema, BatchSetAvailable
 from app.core.exceptions import CustomException
+from app.core.logger import logger
 from app.utils.excel_util import ExcelUtil
 
 from .crud import {{ class_name }}CRUD
@@ -23,7 +23,7 @@ class {{ class_name }}Service:
     """
 
     @classmethod
-    async def detail_{{ business_name_slug }}_service(cls, auth: AuthSchema, id: int) -> dict:
+    async def detail_service(cls, auth: AuthSchema, id: int) -> dict:
         """
         详情
 
@@ -40,7 +40,7 @@ class {{ class_name }}Service:
         return {{ class_name }}OutSchema.model_validate(obj).model_dump()
 
     @classmethod
-    async def list_{{ business_name_slug }}_service(cls, auth: AuthSchema, search: {{ class_name }}QueryParam | None = None, order_by: list[dict] | None = None) -> list[dict]:
+    async def list_service(cls, auth: AuthSchema, search: {{ class_name }}QueryParam | None = None, order_by: list[dict] | None = None) -> list[dict]:
         """
         列表查询
 
@@ -57,7 +57,7 @@ class {{ class_name }}Service:
         return [{{ class_name }}OutSchema.model_validate(obj).model_dump() for obj in obj_list]
 
     @classmethod
-    async def page_{{ business_name_slug }}_service(cls, auth: AuthSchema, page_no: int, page_size: int, search: {{ class_name }}QueryParam | None = None, order_by: list[dict] | None = None) -> dict:
+    async def page_service(cls, auth: AuthSchema, page_no: int, page_size: int, search: {{ class_name }}QueryParam | None = None, order_by: list[dict] | None = None) -> dict:
         """
         分页查询（数据库分页）
 
@@ -84,7 +84,7 @@ class {{ class_name }}Service:
         return result
 
     @classmethod
-    async def create_{{ business_name_slug }}_service(cls, auth: AuthSchema, data: {{ class_name }}CreateSchema) -> dict:
+    async def create_service(cls, auth: AuthSchema, data: {{ class_name }}CreateSchema) -> dict:
         """
         创建
 
@@ -106,7 +106,7 @@ class {{ class_name }}Service:
         return {{ class_name }}OutSchema.model_validate(obj).model_dump()
 
     @classmethod
-    async def update_{{ business_name_slug }}_service(cls, auth: AuthSchema, id: int, data: {{ class_name }}UpdateSchema) -> dict:
+    async def update_service(cls, auth: AuthSchema, id: int, data: {{ class_name }}UpdateSchema) -> dict:
         """
         更新
 
@@ -136,7 +136,7 @@ class {{ class_name }}Service:
         return {{ class_name }}OutSchema.model_validate(obj).model_dump()
 
     @classmethod
-    async def delete_{{ business_name_slug }}_service(cls, auth: AuthSchema, ids: list[int]) -> None:
+    async def delete_service(cls, auth: AuthSchema, ids: list[int]) -> None:
         """
         删除
 
@@ -156,7 +156,7 @@ class {{ class_name }}Service:
         await {{ class_name }}CRUD(auth).delete(ids=ids)
 
     @classmethod
-    async def set_available_{{ business_name_slug }}_service(cls, auth: AuthSchema, data: BatchSetAvailable) -> None:
+    async def set_available_service(cls, auth: AuthSchema, data: BatchSetAvailable) -> None:
         """
         批量设置状态
 
@@ -169,8 +169,8 @@ class {{ class_name }}Service:
         """
         await {{ class_name }}CRUD(auth).set(ids=data.ids, status=data.status)
 
-    @classmethod
-    async def batch_export_{{ business_name_slug }}_service(cls, obj_list: list[dict]) -> bytes:
+    @staticmethod
+    def batch_export_service(obj_list: list[dict]) -> bytes:
         """
         批量导出
 
@@ -200,7 +200,7 @@ class {{ class_name }}Service:
         return ExcelUtil.export_list2excel(list_data=data, mapping_dict=mapping_dict)
 
     @classmethod
-    async def batch_import_{{ business_name_slug }}_service(cls, auth: AuthSchema, file: UploadFile, update_support: bool = False) -> str:
+    async def batch_import_service(cls, auth: AuthSchema, file: UploadFile, update_support: bool = False) -> str:
         """
         批量导入
 
@@ -293,8 +293,8 @@ class {{ class_name }}Service:
             logger.error(f"批量导入失败: {str(e)}")
             raise CustomException(msg=f"导入失败: {str(e)}")
 
-    @classmethod
-    async def import_template_download_{{ business_name_slug }}_service(cls) -> bytes:
+    @staticmethod
+    def import_template_download_service() -> bytes:
         """
         下载导入模板
 

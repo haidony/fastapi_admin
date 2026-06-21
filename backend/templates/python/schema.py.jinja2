@@ -3,6 +3,8 @@
 {% if table.sub %}
 from typing import List
 {% endif %}
+from dataclasses import dataclass
+
 from pydantic import BaseModel, ConfigDict, Field
 from fastapi import Query
 {% for import_stmt in schema_import_list %}
@@ -10,7 +12,8 @@ from fastapi import Query
 {% endfor %}
 {# DateTimeStr 由 schema_import_list 在存在 created_time/updated_time 列时注入 #}
 from app.common.enums import QueueEnum
-from app.core.base_schema import BaseSchema, UserBySchema
+from app.core.base_params import BaseQueryParam, TenantByQueryParam, UserByQueryParam
+from app.core.base_schema import BaseSchema, TenantBySchema, UserBySchema
 
 class {{ class_name }}CreateSchema(BaseModel):
     """
@@ -36,14 +39,15 @@ class {{ class_name }}UpdateSchema({{ class_name }}CreateSchema):
     ...
 
 
-class {{ class_name }}OutSchema({{ class_name }}CreateSchema, BaseSchema, UserBySchema):
+class {{ class_name }}OutSchema({{ class_name }}CreateSchema, BaseSchema, UserBySchema, TenantBySchema):
     """
     {{ function_name }}响应模型
     """
     model_config = ConfigDict(from_attributes=True)
 
 
-class {{ class_name }}QueryParam:
+@dataclass
+class {{ class_name }}QueryParam(BaseQueryParam, UserByQueryParam, TenantByQueryParam):
     """{{ function_name }}查询参数"""
 
     def __init__(
@@ -58,13 +62,10 @@ class {{ class_name }}QueryParam:
         {{ column.column_name }}: {{ column.python_type }} | None = Query(None, description="{{ column.column_comment }}"),
         {% endif %}
         {% endfor %}
-        {% if 'created_time' in table_column_names %}
-        created_time: list[DateTimeStr] | None = Query(None, description="创建时间范围", examples=["2025-01-01 00:00:00", "2025-12-31 23:59:59"]),
-        {% endif %}
-        {% if 'updated_time' in table_column_names %}
-        updated_time: list[DateTimeStr] | None = Query(None, description="更新时间范围", examples=["2025-01-01 00:00:00", "2025-12-31 23:59:59"]),
-        {% endif %}
+        *args,
+        **kwargs,
     ) -> None:
+        super().__init__(*args, **kwargs)
         {% for column in columns %}
         {% if column.is_query and column.query_type == 'LIKE' %}
         # 模糊查询字段

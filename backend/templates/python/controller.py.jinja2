@@ -144,7 +144,7 @@ async def delete_obj_controller(
 
 
 @{{ class_name }}Router.patch(
-    "/available/setting",
+    "/status/batch",
     summary="批量修改{{ function_name }}状态",
     response_model=ResponseSchema[None],
 )
@@ -185,7 +185,7 @@ async def export_obj_list_controller(
     - StreamingResponse: 包含{{ function_name }}列表的Excel文件流响应
     """
     result_dict_list = await {{ class_name }}Service.list_service(search=search, auth=auth)
-    export_result = await {{ class_name }}Service.batch_export_service(obj_list=result_dict_list)
+    export_result = {{ class_name }}Service.batch_export_service(obj_list=result_dict_list)
 
     return StreamResponse(
         data=bytes2file_response(export_result),
@@ -231,7 +231,7 @@ async def export_obj_template_controller() -> StreamingResponse:
     返回:
     - StreamingResponse: 包含{{ function_name }}导入模板的Excel文件流响应
     """
-    import_template_result = await {{ class_name }}Service.import_template_download_service()
+    import_template_result = {{ class_name }}Service.import_template_download_service()
 
     return StreamResponse(
         data=bytes2file_response(import_template_result),

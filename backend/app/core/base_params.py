@@ -57,10 +57,8 @@ class BaseQueryParam:
             description="更新时间范围",
             examples=["2025-01-01 00:00:00", "2025-12-31 23:59:59"],
         ),
-        *args,
-        **kwargs,
     ) -> None:
-        super().__init__(*args, **kwargs)
+        super().__init__()
         # 时间范围查询
         if created_time and len(created_time) == 2:
             self.created_time = (QueueEnum.between.value, (created_time[0], created_time[1]))
@@ -75,10 +73,8 @@ class UserByQueryParam:
         self,
         created_id: int | None = Query(None, description="创建人"),
         updated_id: int | None = Query(None, description="更新人"),
-        *args,
-        **kwargs,
     ) -> None:
-        super().__init__(*args, **kwargs)
+        super().__init__()
         if created_id:
             self.created_id = (QueueEnum.eq.value, created_id)
         if updated_id:
@@ -91,9 +87,7 @@ class TenantByQueryParam:
     def __init__(
         self,
         tenant_id: int | None = Query(None, description="租户ID"),
-        *args,
-        **kwargs,
     ) -> None:
-        super().__init__(*args, **kwargs)
+        super().__init__()
         if tenant_id:
             self.tenant_id = (QueueEnum.eq.value, tenant_id)
