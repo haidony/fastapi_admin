@@ -2,6 +2,7 @@ import json
 import time
 from collections.abc import AsyncGenerator
 from dataclasses import replace
+from functools import wraps
 
 from fastapi import Depends, Query, Request
 from redis.asyncio.client import Redis
@@ -75,6 +76,9 @@ async def _decode_token_info(token: str, redis: Redis) -> tuple[dict, str]:
         raise CustomException(msg="非法凭证", code=10401, status_code=401)
 
     session_id = payload.sub
+    if not session_id:
+        raise CustomException(msg="认证已失效", code=10401, status_code=401)
+
     raw = await RedisCURD(redis).get(
         f"{RedisInitKeyConfig.USER_SESSION.key}:{session_id}"
     )
@@ -82,9 +86,6 @@ async def _decode_token_info(token: str, redis: Redis) -> tuple[dict, str]:
         raise CustomException(msg="认证已失效", code=10401, status_code=401)
 
     user_info = json.loads(raw)
-    if not session_id:
-        raise CustomException(msg="认证已失效", code=10401, status_code=401)
-
     return user_info, session_id
 
 
@@ -115,14 +116,16 @@ async def _try_sliding_refresh(redis: Redis, session_id: str) -> None:
     ttl = await RedisCURD(redis).ttl(
         key=f"{RedisInitKeyConfig.ACCESS_TOKEN.key}:{session_id}"
     )
-    if ttl > 0 and ttl < settings.ACCESS_TOKEN_EXPIRE_MINUTES // 2:
+    # TTL 返回秒，配置也是秒，无需转换
+    expire_seconds = settings.ACCESS_TOKEN_EXPIRE_SECONDS
+    if ttl > 0 and ttl < expire_seconds // 2:
         await RedisCURD(redis).expire(
             key=f"{RedisInitKeyConfig.ACCESS_TOKEN.key}:{session_id}",
-            expire=settings.ACCESS_TOKEN_EXPIRE_MINUTES,
+            expire=expire_seconds,
         )
         await RedisCURD(redis).expire(
             key=f"{RedisInitKeyConfig.REFRESH_TOKEN.key}:{session_id}",
-            expire=settings.REFRESH_TOKEN_EXPIRE_MINUTES,
+            expire=settings.REFRESH_TOKEN_EXPIRE_SECONDS,
         )
 
 async def _load_user_from_db(db: AsyncSession, username: str):
@@ -186,6 +189,44 @@ async def get_current_user(
     返回:
     - AuthSchema: 认证信息模型
     """
+    return await _authenticate(token, db, redis, request)
+
+
+async def get_current_user_ws(
+    token: str = Query(..., description="认证token"),
+    db: AsyncSession = Depends(db_getter),
+    redis: Redis = Depends(redis_getter),
+) -> AuthSchema:
+    """获取当前用户（WebSocket专用，从查询参数获取token）
+
+    参数:
+    - token (str): 认证token
+    - db (AsyncSession): 数据库会话
+    - redis (Redis): Redis连接
+
+    返回:
+    - AuthSchema: 认证信息模型
+    """
+    return await _authenticate(token, db, redis)
+
+
+async def _authenticate(
+    token: str,
+    db: AsyncSession,
+    redis: Redis,
+    request: Request | None = None,
+) -> AuthSchema:
+    """核心认证逻辑（HTTP 与 WebSocket 共享）
+
+    参数:
+    - token: 访问令牌
+    - db: 请求级事务会话
+    - redis: Redis连接
+    - request: HTTP 请求对象（WebSocket 场景为 None）
+
+    返回:
+    - AuthSchema: 认证信息模型
+    """
     if not token:
         raise CustomException(msg="认证已失效", code=10401, status_code=401)
 
@@ -194,12 +235,12 @@ async def get_current_user(
         token = token.split(" ")[1]
 
     # 优先使用 TenantMiddleware 缓存在 request.state.ctx 中的会话信息（避免重复 Redis 读取）
-    ctx = getattr(request.state, "ctx", None)
-    cached_user_info = ctx.jwt_user_info if ctx else None
+    user_info = None
+    if request:
+        ctx = getattr(request.state, "ctx", None)
+        user_info = ctx.jwt_user_info if ctx else None
 
-    if cached_user_info:
-        user_info = cached_user_info
-    else:
+    if not user_info:
         # 降级路径：自行从 Redis 读取会话信息
         user_info, _ = await _decode_token_info(token, redis)
 
@@ -221,71 +262,16 @@ async def get_current_user(
         user = await _load_user_from_db(lookup_db, username)
 
     # 设置请求上下文（仅在当前 request 对象上，业务方通过 request.state.ctx 读取）
-    request.state.ctx = replace(
-        (getattr(request.state, "ctx", None) or RequestContext()),
-        user_id=user.id,
-        user_username=user.username,
-        session_id=session_id,
-        session_info=user_info,
-    )
+    if request:
+        request.state.ctx = replace(
+            (getattr(request.state, "ctx", None) or RequestContext()),
+            user_id=user.id,
+            user_username=user.username,
+            session_id=session_id,
+            session_info=user_info,
+        )
 
     # 返回的 auth.db 指向请求级事务会话，供后续读写操作使用
-    auth = AuthSchema(db=db, tenant_id=tenant_id, check_data_scope=False)
-    auth.user = user
-    return auth
-
-
-async def get_current_user_ws(
-    token: str = Query(..., description="认证token"),
-    db: AsyncSession = Depends(db_getter),
-    redis: Redis = Depends(redis_getter),
-) -> AuthSchema:
-    """获取当前用户（WebSocket专用，从查询参数获取token）
-
-    参数:
-    - token (str): 认证token
-    - db (AsyncSession): 数据库会话
-    - redis (Redis): Redis连接
-
-    返回:
-    - AuthSchema: 认证信息模型
-    """
-    return await _verify_token(token, db, redis)
-
-
-async def _verify_token(
-    token: str,
-    db: AsyncSession,
-    redis: Redis,
-) -> AuthSchema:
-    """验证token并返回用户信息（共享核心逻辑）
-
-    参数:
-    - token (str): 认证token
-    - db (AsyncSession): 数据库会话
-    - redis (Redis): Redis连接
-
-    返回:
-    - AuthSchema: 认证信息模型
-    """
-    if not token:
-        raise CustomException(msg="认证已失效", code=10401, status_code=401)
-
-    # 处理Bearer token（如果通过查询参数传递时包含Bearer前缀）
-    if token.startswith("Bearer"):
-        token = token.split(" ")[1]
-
-    user_info, session_id = await _decode_token_info(token, redis)
-    await _check_token_online(redis, session_id)
-    await _try_sliding_refresh(redis, session_id)
-
-    username = user_info.get("user_name")
-    if not username:
-        raise CustomException(msg="认证已失效", code=10401, status_code=401)
-    tenant_id = user_info.get("tenant_id")
-
-    user = await _load_user_from_db(db, username)
-
     auth = AuthSchema(db=db, tenant_id=tenant_id, check_data_scope=False)
     auth.user = user
     return auth
@@ -403,8 +389,6 @@ def require_superadmin(func):
             async def create(self, data: ...) -> ...:
                 ...
     """
-    from functools import wraps
-
     @wraps(func)
     async def wrapper(self, *args, **kwargs):
         if not self.auth.user or not self.auth.user.is_superuser:

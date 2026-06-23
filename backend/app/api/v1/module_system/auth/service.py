@@ -5,7 +5,7 @@ from datetime import datetime, timedelta
 from typing import NewType
 
 import ua_parser
-from fastapi import Request
+from fastapi import BackgroundTasks, Request
 from redis.asyncio.client import Redis
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -32,7 +32,7 @@ from app.core.security import (
 from app.utils.captcha_util import CaptchaUtil
 from app.utils.common_util import get_random_character
 from app.utils.hash_bcrpy_util import PwdUtil
-from app.utils.ip_local_util import IpLocalUtil
+from app.utils.ip_local_util import IpLocalUtil, get_client_ip
 
 from .schema import (
     AutoLoginTokenSchema,
@@ -56,8 +56,8 @@ async def _write_login_log(
     request_os: str | None = None,
     request_browser: str | None = None,
     msg: str | None = None,
-) -> None:
-    """写入登录日志（独立 session，避免事务回滚时丢失失败记录）"""
+) -> int | None:
+    """写入登录日志；返回日志 ID（用于后台补全归属地）。"""
     from app.api.v1.module_system.log.crud import LoginLogCRUD
     from app.api.v1.module_system.log.schema import LoginLogCreateSchema
     from app.core.base_schema import AuthSchema
@@ -67,7 +67,7 @@ async def _write_login_log(
         async with async_db_session() as session:
             async with session.begin():
                 _auth = AuthSchema(db=session, check_data_scope=False)
-                await LoginLogCRUD(_auth).create(data=LoginLogCreateSchema(
+                obj = await LoginLogCRUD(_auth).create(data=LoginLogCreateSchema(
                     username=username,
                     status=status,
                     login_ip=login_ip,
@@ -76,16 +76,41 @@ async def _write_login_log(
                     request_browser=request_browser,
                     msg=msg,
                 ))
+                return obj.id if obj else None
     except Exception:
-        pass  # 登录日志写入失败不影响登录主流程
+        return None
 
 
-def _resolve_request_ip(request: Request) -> str:
-    """从请求中解析客户端真实 IP"""
-    x_forwarded_for = request.headers.get("X-Forwarded-For")
-    if x_forwarded_for:
-        return x_forwarded_for.split(",")[0].strip()
-    return request.client.host if request.client else "127.0.0.1"
+async def _async_fill_login_location(
+    redis, login_log_id: int, ip: str | None
+) -> None:
+    """后台异步补全登录日志的归属地。"""
+    if not ip:
+        return
+    try:
+        location = await IpLocalUtil.resolve_location_async(redis, ip)
+        if location == "归属地查询中" or not location:
+            return
+        from sqlalchemy import update as sa_update
+
+        from app.api.v1.module_system.log.model import LoginLogModel
+        from app.core.database import async_db_session
+
+        async with async_db_session() as session:
+            async with session.begin():
+                await session.execute(
+                    sa_update(LoginLogModel)
+                    .where(LoginLogModel.id == login_log_id)
+                    .values(login_location=location)
+                )
+    except Exception as e:
+        from app.core.logger import logger
+        logger.warning(f"异步补全登录归属地失败: {e}")
+
+
+def _resolve_request_ip(request: Request) -> str | None:
+    """从请求中解析客户端真实 IP。"""
+    return get_client_ip(request)
 
 
 class LoginService:
@@ -98,6 +123,7 @@ class LoginService:
     async def authenticate_user(
         cls,
         request: Request,
+        background_tasks: BackgroundTasks,
         redis: Redis,
         login_form: CustomOAuth2PasswordRequestForm,
         db: AsyncSession,
@@ -105,7 +131,7 @@ class LoginService:
         """用户认证"""
         ua_result = ua_parser.parse(request.headers.get("user-agent"))
         request_ip = _resolve_request_ip(request)
-        login_location = await IpLocalUtil.resolve_location_for_log(request_ip)
+        login_location = await IpLocalUtil.resolve_location_for_log(redis, request_ip)
         _login_os = ua_result.os.family if ua_result.os else "Unknown"
         _login_browser = ua_result.user_agent.family if ua_result.user_agent else "Unknown"
         _login_username = login_form.username
@@ -203,7 +229,7 @@ class LoginService:
             "is_superuser": user.is_superuser,
         }
 
-        await _write_login_log(
+        log_id = await _write_login_log(
             username=user.username,
             status=1,
             login_ip=request_ip,
@@ -212,6 +238,9 @@ class LoginService:
             request_browser=_login_browser,
             msg="登录成功",
         )
+        # 登录成功后异步补全归属地，不阻塞返回
+        if log_id and login_location == "归属地查询中":
+            background_tasks.add_task(_async_fill_login_location, redis, log_id, request_ip)
 
         return LoginWithTenantsSchema(
             access_token=token.access_token,
@@ -229,7 +258,7 @@ class LoginService:
         ua_result = ua_parser.parse(request.headers.get("user-agent"))
         request_ip = _resolve_request_ip(request)
 
-        login_location = await IpLocalUtil.resolve_location_for_log(request_ip)
+        login_location = await IpLocalUtil.resolve_location_for_log(redis, request_ip)
 
         from dataclasses import replace
 
@@ -243,8 +272,8 @@ class LoginService:
             login_location=login_location,
         )
 
-        access_expires = timedelta(seconds=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
-        refresh_expires = timedelta(seconds=settings.REFRESH_TOKEN_EXPIRE_MINUTES)
+        access_expires = timedelta(seconds=settings.ACCESS_TOKEN_EXPIRE_SECONDS)
+        refresh_expires = timedelta(seconds=settings.REFRESH_TOKEN_EXPIRE_SECONDS)
 
         now = datetime.now()
 
@@ -335,8 +364,8 @@ class LoginService:
         if user.status == 1:
             raise CustomException(msg="用户已被停用")
 
-        access_expires = timedelta(seconds=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
-        refresh_expires = timedelta(seconds=settings.REFRESH_TOKEN_EXPIRE_MINUTES)
+        access_expires = timedelta(seconds=settings.ACCESS_TOKEN_EXPIRE_SECONDS)
+        refresh_expires = timedelta(seconds=settings.REFRESH_TOKEN_EXPIRE_SECONDS)
         now = datetime.now()
 
         # 延长会话信息 Redis TTL
@@ -472,7 +501,7 @@ class LoginService:
 
         # 更新会话中的租户 ID 并写回 Redis
         session_info["tenant_id"] = tenant_id
-        refresh_expires = timedelta(seconds=settings.REFRESH_TOKEN_EXPIRE_MINUTES)
+        refresh_expires = timedelta(seconds=settings.REFRESH_TOKEN_EXPIRE_SECONDS)
         from app.core.redis_crud import RedisCURD
         from app.core.security import create_access_token
 
@@ -482,7 +511,7 @@ class LoginService:
             expire=int(refresh_expires.total_seconds()),
         )
 
-        access_expires = timedelta(seconds=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
+        access_expires = timedelta(seconds=settings.ACCESS_TOKEN_EXPIRE_SECONDS)
         now = datetime.now()
 
         new_access_token = create_access_token(

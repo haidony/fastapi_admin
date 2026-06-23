@@ -248,7 +248,7 @@
   },
   {
     "dict_sort": 1,
-    "dict_label": "默认(Memory)",
+    "dict_label": "默认(Redis)",
     "dict_value": "default",
     "dict_type": "sys_job_store",
     "dict_type_id": 6,
@@ -256,7 +256,7 @@
     "list_class": null,
     "is_default": true,
     "status": 0,
-    "description": "默认分组",
+    "description": "默认分组，支持多Worker部署",
     "tenant_id": 1
   },
   {
@@ -269,20 +269,20 @@
     "list_class": null,
     "is_default": false,
     "status": 0,
-    "description": "数据库分组",
+    "description": "数据库分组，持久化存储",
     "tenant_id": 1
   },
   {
     "dict_sort": 3,
-    "dict_label": "数据库(Redis)",
-    "dict_value": "redis",
+    "dict_label": "内存(Memory)",
+    "dict_value": "memory",
     "dict_type": "sys_job_store",
     "dict_type_id": 6,
     "css_class": "",
     "list_class": null,
     "is_default": false,
     "status": 0,
-    "description": "reids分组",
+    "description": "内存分组，仅单进程测试使用",
     "tenant_id": 1
   },
   {

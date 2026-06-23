@@ -106,8 +106,8 @@ def create_async_engine_and_session(
         return async_engine, AsyncSessionLocal
 
 
-engine, db_session = create_engine_and_session(settings.DB_URI)
-async_engine, async_db_session = create_async_engine_and_session(settings.ASYNC_DB_URI)
+engine, db_session = create_engine_and_session()
+async_engine, async_db_session = create_async_engine_and_session()
 
 
 async def create_tables() -> None:
@@ -151,8 +151,16 @@ async def redis_connect(app: FastAPI, status: bool) -> Redis | None:
 
     if status:
         try:
+            # 构建 Redis URL：处理用户名和密码的组合情况
+            auth_part = ""
+            if settings.REDIS_USER and settings.REDIS_PASSWORD:
+                auth_part = f"{settings.REDIS_USER}:{settings.REDIS_PASSWORD}@"
+            elif settings.REDIS_PASSWORD:
+                auth_part = f":{settings.REDIS_PASSWORD}@"
+            
+            redis_url = f"redis://{auth_part}{settings.REDIS_HOST}:{settings.REDIS_PORT}/{settings.REDIS_DB_NAME}"
             rd = await Redis.from_url(
-                url=settings.REDIS_URI,
+                url=redis_url,
                 encoding="utf-8",
                 decode_responses=True,
                 health_check_interval=20,

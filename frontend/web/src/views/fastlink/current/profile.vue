@@ -6,7 +6,7 @@
       <div class="w-md mr-5 max-md:w-full max-md:mr-0">
         <div class="fa-card-sm relative p-9 pb-6 overflow-hidden text-center">
           <img
-            class="absolute top-0 left-0 w-full h-50 object-cover"
+            class="absolute top-0 left-0 w-full h-60 object-cover"
             src="@imgs/user/bg.webp"
             alt=""
           />
@@ -58,12 +58,22 @@
 
           <div class="relative z-10 w-75 mx-auto mt-7.5 text-left">
             <div class="mt-2.5 flex items-start">
-              <FaSvgIcon icon="ri:mail-line" class="text-g-700 shrink-0 mt-0.5" />
-              <span class="ml-2 text-sm break-all">{{ infoFormState.email || "—" }}</span>
+              <FaSvgIcon icon="ri:shield-user-line" class="text-g-700 shrink-0 mt-0.5" />
+              <span class="ml-2 text-sm">{{ infoFormState.tenant_by?.name || "—" }}</span>
             </div>
             <div class="mt-2.5 flex items-start">
               <FaSvgIcon icon="ri:user-3-line" class="text-g-700 shrink-0 mt-0.5" />
               <span class="ml-2 text-sm">{{ infoFormState.username || "—" }}</span>
+            </div>
+            <div class="mt-2.5 flex items-start">
+              <FaSvgIcon icon="ri:checkbox-circle-line" class="text-g-700 shrink-0 mt-0.5" />
+              <ElTag :type="infoFormState.status === 0 ? 'success' : 'danger'" size="small">
+                {{ infoFormState.status === 0 ? "启用" : "停用" }}
+              </ElTag>
+            </div>
+            <div class="mt-2.5 flex items-start">
+              <FaSvgIcon icon="ri:mail-line" class="text-g-700 shrink-0 mt-0.5" />
+              <span class="ml-2 text-sm break-all">{{ infoFormState.email || "—" }}</span>
             </div>
             <div class="mt-2.5 flex items-start">
               <FaSvgIcon icon="ri:map-pin-line" class="text-g-700 shrink-0 mt-0.5" />
@@ -75,8 +85,19 @@
                 {{ infoFormState.positions?.map((p) => p.name).join("、") || "—" }}
               </span>
             </div>
+            <div class="mt-2.5 flex items-start">
+              <FaSvgIcon icon="ri:calendar-line" class="text-g-700 shrink-0 mt-0.5" />
+              <span class="ml-2 text-sm">
+                注册: {{ infoFormState.created_time ? formatDate(infoFormState.created_time) : "—" }}
+              </span>
+            </div>
+            <div class="mt-2.5 flex items-start">
+              <FaSvgIcon icon="ri:time-line" class="text-g-700 shrink-0 mt-0.5" />
+              <span class="ml-2 text-sm">
+                更新: {{ infoFormState.updated_time ? formatDate(infoFormState.updated_time) : "—" }}
+              </span>
+            </div>
           </div>
-
           <div v-if="roleTagList.length" class="relative z-10 mt-10">
             <h3 class="text-sm font-medium">角色</h3>
             <div class="flex flex-wrap justify-center mt-3.5">
@@ -89,32 +110,50 @@
               </div>
             </div>
           </div>
+
+          <div v-if="hasThirdPartyBindings" class="relative z-10 mt-10">
+            <h3 class="text-sm font-medium">第三方账号</h3>
+            <div class="flex flex-wrap justify-center mt-3.5 gap-3">
+              <div v-if="infoFormState.github_login" class="flex items-center text-xs text-g-600">
+                <FaSvgIcon icon="ri:github-fill" class="mr-1" />
+                {{ infoFormState.github_login }}
+              </div>
+              <div v-if="infoFormState.gitee_login" class="flex items-center text-xs text-g-600">
+                <FaSvgIcon icon="ri:gitee-fill" class="mr-1" />
+                {{ infoFormState.gitee_login }}
+              </div>
+              <div v-if="infoFormState.wx_login" class="flex items-center text-xs text-g-600">
+                <FaSvgIcon icon="ri:wechat-fill" class="mr-1" />
+                {{ infoFormState.wx_login }}
+              </div>
+              <div v-if="infoFormState.qq_login" class="flex items-center text-xs text-g-600">
+                <FaSvgIcon icon="ri:qq-fill" class="mr-1" />
+                {{ infoFormState.qq_login }}
+              </div>
+            </div>
+          </div>
         </div>
       </div>
 
       <ElDialog
         v-model="avatarCropVisible"
         title="裁剪头像"
-        width="640px"
-        append-to-body
-        destroy-on-close
         @closed="onAvatarCropDialogClosed"
       >
         <FaCutterImg
           v-if="avatarCropVisible && avatarCropSrc"
           :key="avatarCropSrc"
-          :img-url="avatarCropSrc"
-          :box-width="420"
-          :box-height="340"
-          :cut-width="240"
-          :cut-height="240"
-          :quality="0.92"
+          v-model:imgUrl="avatarCropSrc"
+          :boxWidth="530"
+          :boxHeight="300"
+          :cutWidth="360"
+          :cutHeight="200"
+          :quality="1"
           :tool="true"
-          :show-preview="true"
-          :original-graph="false"
-          file-type="jpeg"
+          :showPreview="true"
+          :originalGraph="false"
           title="调整头像"
-          preview-title="预览"
+          previewTitle="预览"
           @update:img-url="onAvatarCropConfirm"
           @error="onAvatarCropImgError"
         />
@@ -159,28 +198,32 @@
             </ElRow>
 
             <ElRow>
-              <ElFormItem label="账号" prop="username">
-                <ElInput v-model="infoFormState.username" disabled placeholder="登录账号" />
-              </ElFormItem>
-              <ElFormItem label="邮箱" prop="email" class="ml-5">
+
+              <ElFormItem label="邮箱" prop="email">
                 <ElInput
                   v-model="infoFormState.email"
                   :disabled="!isEdit"
                   placeholder="请输入邮箱"
                 />
               </ElFormItem>
-            </ElRow>
-
-            <ElRow>
-              <ElFormItem label="手机" prop="mobile">
+              <ElFormItem label="手机" prop="mobile" class="ml-5">
                 <ElInput
                   v-model="infoFormState.mobile"
                   :disabled="!isEdit"
                   placeholder="请输入手机号码"
                 />
               </ElFormItem>
-              <ElFormItem label="部门" class="ml-5">
-                <ElInput :model-value="infoFormState.dept?.name || '—'" disabled />
+            </ElRow>
+
+            <ElRow class="mb-4">
+              <ElFormItem label="描述" prop="description" class="w-full!">
+                <ElInput
+                  v-model="infoFormState.description"
+                  :disabled="!isEdit"
+                  type="textarea"
+                  :rows="4"
+                  placeholder="请输入描述"
+                />
               </ElFormItem>
             </ElRow>
 
@@ -288,9 +331,27 @@ const roleTagList = computed(() =>
     .filter((n): n is string => !!n && n.trim().length > 0)
 );
 
+const hasThirdPartyBindings = computed(() =>
+  !!(infoFormState.github_login || infoFormState.gitee_login || 
+     infoFormState.wx_login || infoFormState.qq_login)
+);
+
+function formatDate(dateStr: string | undefined): string {
+  if (!dateStr) return "—";
+  const date = new Date(dateStr);
+  if (isNaN(date.getTime())) return dateStr;
+  return date.toLocaleString("zh-CN", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
 const infoFormState = reactive<InfoFormState>({
   name: undefined,
-  gender: 1,
+  gender: undefined,
   mobile: undefined,
   email: undefined,
   username: undefined,
@@ -300,6 +361,14 @@ const infoFormState = reactive<InfoFormState>({
   roles: [],
   avatar: undefined,
   created_time: undefined,
+  updated_time: undefined,
+  description: undefined,
+  status: undefined,
+  tenant_by: undefined,
+  github_login: undefined,
+  gitee_login: undefined,
+  wx_login: undefined,
+  qq_login: undefined,
 });
 
 const passwordFormState = reactive<PasswordFormState>({
@@ -353,9 +422,18 @@ async function onAvatarCropConfirm(dataURL: string) {
 
 function normalizeGenderValue(v: string | number | undefined): number {
   if (v === undefined || v === null || v === "") return 1;
-  const n = Number(v);
+  const n = typeof v === "string" ? Number(v) : v;
   return Number.isFinite(n) ? n : 1;
 }
+
+const initInfoForm = () => {
+  const basicInfo = userStore.basicInfo;
+  Object.assign(infoFormState, {
+    ...basicInfo,
+    gender: normalizeGenderValue(basicInfo.gender),
+    avatar: basicInfo.avatar?.trim(),
+  });
+};
 
 const getOptions = async () => {
   await dictStore.getDict(["sys_user_sex"]);
@@ -514,15 +592,10 @@ const handleAvatarFileChange = (file: UploadFile) => {
 
 const updateAvatar = (fileUrl: string) => {
   if (fileUrl) {
-    infoFormState.avatar = fileUrl;
+    infoFormState.avatar = fileUrl.trim();
   } else {
     ElMessage.error("无效的头像URL");
   }
-};
-
-const initInfoForm = () => {
-  const basicInfo = userStore.basicInfo;
-  Object.assign(infoFormState, { ...basicInfo });
 };
 
 const initPasswordForm = () => {

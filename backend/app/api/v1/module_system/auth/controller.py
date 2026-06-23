@@ -2,7 +2,7 @@ import json
 import secrets
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Path, Query, Request
+from fastapi import APIRouter, BackgroundTasks, Depends, Path, Query, Request
 from fastapi.responses import JSONResponse, RedirectResponse
 from redis.asyncio.client import Redis
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -63,11 +63,14 @@ _AUTH_TENANTS_NS = "auth_tenants"
 )
 async def login_for_access_token_controller(
     request: Request,
+    background_tasks: BackgroundTasks,
     redis: Annotated[Redis, Depends(redis_getter)],
     login_form: Annotated[CustomOAuth2PasswordRequestForm, Depends()],
     db: Annotated[AsyncSession, Depends(db_getter)],
 ) -> JSONResponse | dict:
-    login_result = await LoginService.authenticate_user(request=request, redis=redis, login_form=login_form, db=db)
+    login_result = await LoginService.authenticate_user(
+        request=request, redis=redis, login_form=login_form, db=db, background_tasks=background_tasks
+    )
 
     logger.info(f"用户{login_form.username}登录成功")
 

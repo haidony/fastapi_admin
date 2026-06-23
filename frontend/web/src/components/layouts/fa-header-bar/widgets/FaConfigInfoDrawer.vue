@@ -121,10 +121,10 @@
                   inline-prompt
                   active-text="启用"
                   inactive-text="禁用"
-                  :model-value="item?.config_value === 'true'"
+                  :model-value="item?.config_value === 'on'"
                   @update:model-value="
                     (value) => {
-                      item!.config_value = value ? 'true' : 'false';
+                      item!.config_value = value ? 'on' : 'off';
                       markModified(key);
                     }
                   "

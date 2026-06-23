@@ -235,6 +235,13 @@ export interface InfoFormState {
   avatar?: string;
   created_time?: string;
   updated_time?: string;
+  status?: number;
+  description?: string;
+  tenant_by?: { id?: number; name?: string };
+  gitee_login?: string;
+  github_login?: string;
+  wx_login?: string;
+  qq_login?: string;
 }
 
 export interface PasswordFormState {

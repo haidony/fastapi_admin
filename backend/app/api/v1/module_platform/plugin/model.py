@@ -14,7 +14,7 @@ class PluginModel(ModelMixin):
     code: Mapped[str] = mapped_column(String(50), nullable=False, unique=True, comment="插件编码(module_xxx)")
     version: Mapped[str] = mapped_column(String(20), nullable=False, default="1.0.0", comment="版本号")
     author: Mapped[str | None] = mapped_column(String(100), nullable=True, comment="作者")
-    icon: Mapped[str | None] = mapped_column(String(500), nullable=True, comment="图标URL")
+    icon: Mapped[str | None] = mapped_column(String(100), nullable=True, comment="图标(iconify名称,如ri:plug-2-line)")
     category: Mapped[str] = mapped_column(String(20), nullable=False, default="tool", comment="分类(tool/ai/monitor/business)")
     price: Mapped[int] = mapped_column(Integer, nullable=False, default=0, comment="价格(分,0=免费)")
     menu_path: Mapped[str | None] = mapped_column(String(200), nullable=True, comment="菜单路径(安装后显示)")

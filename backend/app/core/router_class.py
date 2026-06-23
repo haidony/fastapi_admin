@@ -38,8 +38,6 @@ class OperationLogRoute(APIRoute):
             if not settings.OPERATION_LOG_RECORD or request.method not in settings.OPERATION_RECORD_METHOD:
                 return response
             route: APIRoute = request.scope.get("route", None)
-            if route and route.name in settings.IGNORE_OPERATION_FUNCTION:
-                return response
 
             try:
                 oper_param: dict[str, Any] = {}

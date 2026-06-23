@@ -46,25 +46,5 @@
     "privacy": "https://fastapiadmin.com/privacy",
     "clause": "https://fastapiadmin.com/clause",
     "git_code": null
-  },
-  {
-    "name": "星辰科技有限公司",
-    "code": "STAR",
-    "contact_name": "张明",
-    "contact_phone": "13800001001",
-    "contact_email": "zhang@star-tech.dev",
-    "package_id": 2,
-    "description": "中型科技企业，使用标准版套餐",
-    "copyright": "2026 星辰科技"
-  },
-  {
-    "name": "创新工坊",
-    "code": "INNO",
-    "contact_name": "李芳",
-    "contact_phone": "13800002001",
-    "contact_email": "li@inno.work",
-    "package_id": 1,
-    "description": "初创团队，使用基础版免费试用",
-    "copyright": "2026 创新工坊"
   }
 ]

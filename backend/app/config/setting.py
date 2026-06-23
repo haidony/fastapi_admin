@@ -37,13 +37,10 @@ class Settings(BaseSettings):
     DEBUG: bool = True  # 调试模式
     TITLE: str = "🎉 FastapiAdmin 🎉 "  # 文档标题
     VERSION: str = "0.1.0"  # 版本号
-    DESCRIPTION: str = (
-        "该项目是一个基于python的web服务框架，基于fastapi和sqlalchemy实现。"  # 文档描述
-    )
+    DESCRIPTION: str = "后台接口文档"  # 文档描述
     SUMMARY: str = "接口汇总"  # 文档概述
     DOCS_URL: str = "/docs"  # Swagger UI路径
     REDOC_URL: str = "/redoc"  # ReDoc路径
-    LJDOC_URL: str = "/ljdoc"  # LangJin UI路径
     ROOT_PATH: str = "/api/v1"  # API路由前缀
 
     # ================================================= #
@@ -66,10 +63,9 @@ class Settings(BaseSettings):
     # ================================================= #
     SECRET_KEY: str = "vgb0tnl9d58+6n-6h-ea&u^1#s0ccp!794=krylxcjq75vzps$"  # JWT密钥
     ALGORITHM: str = "HS256"  # JWT算法
-    ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 60 * 12  # access_token过期时间(秒)12 小时
-    REFRESH_TOKEN_EXPIRE_MINUTES: int = 60 * 60 * 12  # refresh_token过期时间(秒)12 小时
+    ACCESS_TOKEN_EXPIRE_SECONDS: int = 60 * 60 * 12  # access_token过期时间(秒)12 小时
+    REFRESH_TOKEN_EXPIRE_SECONDS: int = 60 * 60 * 12  # refresh_token过期时间(秒)12 小时
     TOKEN_TYPE: str = "Bearer"  # token类型（RFC 6750 标准大小写）
-    TOKEN_REQUEST_PATH_EXCLUDE: list[str] = ["api/v1/auth/login"]  # JWT / RBAC 路由白名单
     TOKEN_SLIDING_EXPIRE: bool = True  # 是否启用滑动过期(用户操作时自动续期)
 
     # 多租户中间件白名单路径（不需要租户上下文的公开接口）
@@ -82,23 +78,13 @@ class Settings(BaseSettings):
     # ================================================= #
     # ******************* 支付配置 ******************* #
     # ================================================= #
-    PAYMENT_GATEWAY: str = "mock"  # alipay / wxpay / mock
     # 支付宝
     PAYMENT_ALIPAY_APP_ID: str = ""
     PAYMENT_ALIPAY_PRIVATE_KEY: str = ""
     PAYMENT_ALIPAY_PUBLIC_KEY: str = ""
     PAYMENT_ALIPAY_SANDBOX: bool = True
-    # 微信支付
-    PAYMENT_WXPAY_APP_ID: str = ""
-    PAYMENT_WXPAY_MCH_ID: str = ""
-    PAYMENT_WXPAY_API_KEY: str = ""
     # 站点 URL（用于生成支付通知 URL）
     SITE_URL: str = "http://localhost:8001"
-
-    # 多租户：通配子域与登录租户一致（默认关闭；生产按 base 解析 {code}.base）
-    TENANT_HOST_ENFORCE: bool = False
-    TENANT_HOST_BASE_DOMAIN: str = ""
-    TENANT_HOST_IGNORE_PREFIXES: list[str] = ["www", "api", "admin"]
 
     # ================================================= #
     # ******************** 数据库配置 ******************* #
@@ -115,7 +101,7 @@ class Settings(BaseSettings):
     FUTURE: bool = True  # 是否使用SQLAlchemy 2.0特性
     AUTOCOMMIT: bool = False  # 是否自动提交（映射 SQLAlchemy sessionmaker(autocommit=...)）
     AUTOFLUSH: bool = False  # 是否自动刷新（映射 SQLAlchemy sessionmaker(autoflush=...)）
-    AUTOFETCH: bool | None = None  # 兼容旧环境变量名（保留别名，避免 .env 中已有 AUTOFETCH 的部署报错）
+    AUTOFETCH: bool | None = None  # AUTOFLUSH 别名（优先级高于 AUTOFLUSH，兼容旧环境变量名）
     EXPIRE_ON_COMMIT: bool = False  # 是否在提交时过期
 
     # MySQL/PostgreSQL数据库连接
@@ -135,7 +121,6 @@ class Settings(BaseSettings):
     REDIS_DB_NAME: int = 1
     REDIS_USER: str = ""
     REDIS_PASSWORD: str = ""
-    REDIS_URL: str = ""  # 完整 Redis URL，优先级最高（redis://user:pass@host:port/db）
 
     # ================================================= #
     # ******************** 验证码配置 ******************* #
@@ -164,19 +149,13 @@ class Settings(BaseSettings):
     # ================================================= #
     # ******************* 外部 HTTP（httpx）******************* #
     # ================================================= #
-    HTTPX_DEFAULT_TIMEOUT: float = 10.0  # 对外请求默认超时（秒），见 app/common/httpx_defaults.py
+    HTTPX_DEFAULT_TIMEOUT: float = 10.0  # 对外 HTTP 请求默认超时（秒）
     IP_LOCATION_ENABLE: bool = True  # 是否启用 IP 归属地查询（登录时对外发起 HTTP 请求）
 
     # ================================================= #
     # ********************* 日志配置 ******************* #
     # ================================================= #
-    # 是否额外写入 JSON Lines（loguru ``serialize=True``，与控制台/info.log 同源，便于日志平台采集）
-    LOG_JSON_FILE_ENABLE: bool = False
-    LOG_JSON_FILE_NAME: str = "app.jsonl"  # 相对 LOG_DIR
-    LOG_JSON_RETENTION_DAYS: int = 7  # JSON 文件保留天数（通常比文本日志短）
-
     OPERATION_LOG_RECORD: bool = True  # 是否记录操作日志
-    IGNORE_OPERATION_FUNCTION: list[str] = ["get_captcha_for_login"]  # 忽略记录的函数
     OPERATION_RECORD_METHOD: list[str] = [
         "POST",
         "PUT",
@@ -192,11 +171,6 @@ class Settings(BaseSettings):
     GZIP_ENABLE: bool = True  # 是否启用Gzip
     GZIP_MIN_SIZE: int = 1000  # 最小压缩大小(字节)
     GZIP_COMPRESS_LEVEL: int = 9  # 压缩级别(1-9)
-
-    # ================================================= #
-    # ***************** 安全响应头配置 ***************** #
-    # ================================================= #
-    HSTS_ENABLE: bool = False  # 是否启用 HSTS（生产环境建议 True，开发环境 False）
 
     # ================================================= #
     # ***************** 静态文件配置 ***************** #
@@ -239,31 +213,24 @@ class Settings(BaseSettings):
     OPENAI_BASE_URL: str = ""  # API Base URL，如 https://api.minimax.chat/v1
 
     # ================================================= #
-    # ******************* ChromaDB配置 ****************** #
-    # ================================================= #
-    CHROMA_PERSIST_DIR: str = str(BASE_DIR / "data" / "chroma")  # ChromaDB 持久化目录
-    CHROMA_COLLECTION_NAME: str = "knowledge_base"  # ChromaDB 集合名称
-
-    # ================================================= #
     # ******************* 请求限制配置 ****************** #
     # ================================================= #
     REQUEST_LIMITER_REDIS_PREFIX: str = "fastapiadmin:request_limiter:"
-    RATE_LIMITER_TIMES: int = 200
-    RATE_LIMITER_SECONDS: int = 10
 
     # ================================================= #
-    # ******************* 重构配置 ******************* #
+    # ******************* 动态配置 ******************* #
     # ================================================= #
     @property
     def MIDDLEWARE_LIST(self) -> list[str | None]:
         # 中间件列表（注册时逆序叠加：下列第一项在列表中最前，最终位于最外层，优先生效）
         # 中间件执行顺序（从外到内）：
-        #   CORS → RequestLog → SecurityHeaders → GZip → CorrelationId → 业务路由
+        #   CORS → RequestLog → GZip → CorrelationId → 业务路由
+        # 安全响应头（X-Content-Type-Options / Referrer-Policy / Permissions-Policy / HSTS）
+        # 由前置 Nginx / 反向代理通过 add_header 设置，避免应用层 BaseHTTPMiddleware 开销。
         MIDDLEWARES: list[str | None] = [
             "app.core.middlewares.CustomCORSMiddleware" if self.CORS_ORIGIN_ENABLE else None,
             "app.core.middlewares.RequestLogMiddleware" if self.OPERATION_LOG_RECORD else None,
             "app.core.middlewares.CustomGZipMiddleware" if self.GZIP_ENABLE else None,
-            "app.core.middlewares.SecurityHeadersMiddleware",  # 安全响应头
             "app.core.middlewares.CorrelationIdMiddleware",  # 请求上下文
             "app.core.middlewares.TenantMiddleware",  # 租户上下文（需 JWT）
         ]
@@ -305,10 +272,6 @@ class Settings(BaseSettings):
         else:
             db_connect = f"sqlite:///{self.DATABASE_NAME}.db"
         return db_connect
-
-    @property
-    def REDIS_URI(self) -> str:
-        return f"redis://{self.REDIS_USER}:{self.REDIS_PASSWORD}@{self.REDIS_HOST}:{self.REDIS_PORT}/{self.REDIS_DB_NAME}"
 
     @property
     def FASTAPI_CONFIG(self) -> dict[str, Any]:

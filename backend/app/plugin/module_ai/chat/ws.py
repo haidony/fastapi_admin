@@ -1,9 +1,10 @@
 import json
 
-from fastapi import APIRouter, WebSocket
+from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
 from app.core.database import async_db_session
-from app.core.dependencies import _verify_token
+from app.core.dependencies import _authenticate
+from app.core.exceptions import CustomException
 from app.core.logger import logger
 from app.core.router_class import OperationLogRoute
 
@@ -17,18 +18,23 @@ WS_AI = APIRouter(
 )
 
 
+async def _send_error_and_close(websocket: WebSocket, message: str) -> None:
+    """发送错误消息并关闭连接"""
+    try:
+        await websocket.send_text(f"错误: {message}")
+    except RuntimeError:
+        pass
+    finally:
+        try:
+            await websocket.close()
+        except RuntimeError:
+            pass
+
+
 @WS_AI.websocket("/ws", name="WebSocket聊天")
-async def websocket_chat_controller(
-    websocket: WebSocket,
-) -> None:
+async def websocket_chat_controller(websocket: WebSocket) -> None:
     """
     WebSocket 聊天接口。
-
-    参数:
-    - websocket (WebSocket): WebSocket 连接。
-
-    返回:
-    - None: 长连接处理完毕或关闭后无返回值。
 
     支持两种消息格式：
     1. 纯文本：直接发送消息内容
@@ -37,30 +43,30 @@ async def websocket_chat_controller(
     ws://127.0.0.1:8001/api/v1/ai/chat/ws?token=xxx
     """
     await websocket.accept()
-
-    # 从查询参数获取token并认证
     token = websocket.query_params.get("token")
-    if token:
-        try:
-            # 获取数据库和redis连接
-            async with async_db_session() as db:
-                redis = websocket.app.state.redis
-                auth = await _verify_token(token, db, redis)
-                user_info = f"用户: {auth.user.username}" if auth and auth.user else "未认证用户"
-                logger.info(f"WebSocket连接已建立: {websocket.client} - {user_info}")
 
-                # 保存用户信息到websocket状态
-                websocket.state.auth = auth
+    if not token:
+        await _send_error_and_close(websocket, "未提供认证token，请重新登录")
+        return
 
-                # 进入消息循环
-                while True:
+    try:
+        # 认证：db 会话需在整个连接生命周期内保持打开（auth.db 供 ChatService 使用）
+        redis = websocket.app.state.redis
+        async with async_db_session() as db:
+            auth = await _authenticate(token, db, redis)
+
+            user = auth.user
+            logger.info("WebSocket连接已建立: {} - 用户: {}", websocket.client, user.username if user else "未认证")
+
+            # 消息循环
+            while True:
+                try:
                     data = await websocket.receive_text()
                     try:
                         message_data = json.loads(data)
                         query = ChatQuerySchema(**message_data)
-                        logger.info(f"收到聊天查询: {query}- 会话ID: {query.session_id}")
+                        logger.info("收到聊天查询: {} - 会话ID: {}", query, query.session_id)
 
-                        # 处理AI回复（使用 agno 记忆存储）
                         chat_result = ChatService.chat_query(query=query, auth=auth)
                         async for chunk in chat_result:
                             if chunk:
@@ -68,42 +74,23 @@ async def websocket_chat_controller(
                                     await websocket.send_text(chunk)
                                 except RuntimeError:
                                     logger.warning("WebSocket连接已关闭，停止发送消息")
-                                    break
+                                    return
                     except json.JSONDecodeError:
-                        logger.warning(f"收到非JSON消息: {data}")
-                        try:
-                            await websocket.send_text("消息格式错误，请发送JSON格式的消息")
-                        except RuntimeError:
-                            logger.warning("WebSocket连接已关闭，无法发送错误消息")
-                            break
+                        logger.warning("收到非JSON消息: {}", data)
+                        await websocket.send_text("消息格式错误，请发送JSON格式的消息")
                     except Exception as e:
-                        logger.error(f"处理消息时出错: {e}")
-                        try:
-                            await websocket.send_text(f"处理消息时出错: {str(e)}")
-                        except RuntimeError:
-                            logger.warning("WebSocket连接已关闭，无法发送错误消息")
-                            break
-        except Exception as e:
-            logger.warning(f"WebSocket认证失败或聊天出错: {e}")
-            try:
-                await websocket.send_text(f"错误: {str(e)}")
-            except RuntimeError:
-                logger.warning("WebSocket连接已关闭，无法发送错误消息")
-            finally:
-                try:
-                    await websocket.close()
-                except RuntimeError:
-                    pass
-            return
-    else:
-        logger.warning(f"WebSocket连接未提供token: {websocket.client}")
-        try:
-            await websocket.send_text("未提供认证token，请重新登录")
-        except RuntimeError:
-            logger.warning("WebSocket连接已关闭，无法发送错误消息")
-        finally:
-            try:
-                await websocket.close()
-            except RuntimeError:
-                pass
-        return
+                        logger.error("处理消息时出错: {}", e)
+                        await websocket.send_text(f"处理消息时出错: {e}")
+
+                except WebSocketDisconnect:
+                    logger.info("WebSocket连接已断开: {}", websocket.client)
+                    return
+
+    except CustomException as e:
+        # 认证失败等业务异常
+        logger.warning("WebSocket认证失败: {}", e.msg)
+        await _send_error_and_close(websocket, e.msg)
+    except Exception as e:
+        # 未知异常
+        logger.exception("WebSocket未知异常: {}", e)
+        await _send_error_and_close(websocket, "服务器内部错误")

@@ -121,7 +121,7 @@ const JobAPI = {
 export default JobAPI;
 
 export interface SchedulerStatus {
-  status: number;
+  status: string;
   is_running: boolean;
   job_count: number;
 }

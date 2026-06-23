@@ -19,9 +19,89 @@ from .schema import (
     ParamsUpdateSchema,
 )
 
-# 中间件系统配置内存缓存（避免每请求查 Redis）
-_MID_CONFIG_TTL: float = 60.0  # 缓存 60 秒
-_mid_config_cache: dict = {"ts": 0.0, "data": None}
+# 中间件 / 调度器高频读取的 sys_param 配置键集合。
+MIDDLEWARE_CONFIG_KEYS: tuple[str, ...] = (
+    "demo_enable",
+    "ip_white_list",
+    "white_api_list_path",
+    "ip_black_list",
+    "operation_log_retention_days",
+)
+
+# 内存缓存（按租户隔离）
+_MID_CONFIG_TTL: float = 60.0
+_mid_config_cache: dict[int, dict] = {}
+
+
+def _parse_bool(value: object) -> bool:
+    """兼容字符串 / 布尔值 / JSON 布尔值的开关字段解析。
+
+    支持的字符串真值：true / 1 / yes / on
+    支持的字符串假值：false / 0 / no / off（以及空字符串、None）
+    """
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        normalized = value.strip().lower()
+        if normalized in {"true", "1", "yes", "on"}:
+            return True
+        if normalized in {"false", "0", "no", "off", ""}:
+            return False
+        try:
+            return bool(json.loads(normalized))
+        except (json.JSONDecodeError, ValueError):
+            return False
+    if value is None:
+        return False
+    return bool(value)
+
+
+def _parse_json_list(value: object) -> list:
+    """兼容 JSON 字符串 / 列表 / 空值的数组字段解析。"""
+    if isinstance(value, list):
+        return value
+    if isinstance(value, str):
+        try:
+            parsed = json.loads(value)
+            return parsed if isinstance(parsed, list) else []
+        except (json.JSONDecodeError, ValueError):
+            return []
+    return []
+
+
+def _invalidate_mid_config_cache(tenant_id: int | None = None) -> None:
+    """失效中间件内存缓存。tenant_id 为 None 时清空所有租户。"""
+    if tenant_id is None:
+        _mid_config_cache.clear()
+    else:
+        _mid_config_cache.pop(tenant_id, None)
+
+
+def _default_for(key: str) -> object:
+    """缺省值表：新增 MIDDLEWARE_CONFIG_KEYS 时只需在这里登记默认值。"""
+    if key in {"ip_white_list", "ip_black_list", "white_api_list_path"}:
+        return []
+    if key == "demo_enable":
+        return False
+    if key == "operation_log_retention_days":
+        return 90
+    return None
+
+
+def _parse_value(key: str, value: object) -> object:
+    """按 key 的语义解析 config_value。"""
+    if key == "demo_enable":
+        return _parse_bool(value)
+    if key in {"ip_white_list", "ip_black_list", "white_api_list_path"}:
+        return _parse_json_list(value)
+    if key == "operation_log_retention_days":
+        if value is None:
+            return 90
+        try:
+            return int(value)
+        except (TypeError, ValueError):
+            return 90
+    return value
 
 
 class ParamsService:
@@ -199,6 +279,9 @@ class ParamsService:
             logger.error(f"更新系统配置失败: {e}")
             raise CustomException(msg="同步配置到缓存失败") from e
 
+        # 失效中间件内存缓存，让下次请求重新加载
+        _invalidate_mid_config_cache(self.auth.user.tenant_id)
+
         return out
 
     async def delete(self, redis: Redis, ids: list[int]) -> None:
@@ -235,13 +318,16 @@ class ParamsService:
                 logger.error(f"删除系统配置失败: {e}")
                 raise CustomException(msg="同步删除缓存失败") from e
 
+        # 失效中间件内存缓存
+        _invalidate_mid_config_cache(self.auth.user.tenant_id)
+
     async def batch_set_status(self, ids: list[int], status: int) -> None:
         """
         批量设置系统参数状态
 
         参数:
         - ids (list[int]): 系统参数ID列表
-        - status (str): 状态值
+        - status (int): 状态值
 
         返回:
         - None
@@ -284,168 +370,108 @@ class ParamsService:
         return ExcelUtil.export_list2excel(list_data=data, mapping_dict=mapping_dict)
 
     @staticmethod
-    async def init_cache(redis: Redis) -> None:
-        """
-        初始化系统参数并按租户缓存（无 auth）。
-
-        参数:
-        - redis (Redis): Redis 客户端实例
-
-        返回:
-        - None
-        """
+    async def _load_all_configs_from_db() -> list:
         async with async_db_session() as session:
             async with session.begin():
                 init_auth = AuthSchema(db=session, check_data_scope=False)
-                config_obj = await ParamsCRUD(init_auth).get_list()
-                if not config_obj:
-                    raise CustomException(msg="该数据不存在")
-                try:
-                    for config in config_obj:
-                        tenant_id = config.tenant_id
-                        redis_key = f"{RedisInitKeyConfig.SYSTEM_CONFIG.key}:{tenant_id}:{config.config_key}"
-                        out = ParamsOutSchema.model_validate(config)
-                        redis_payload = out.model_dump(mode="json")
-                        value = json.dumps(redis_payload, ensure_ascii=False)
-                        result = await RedisCURD(redis).set(
-                            key=redis_key,
-                            value=value,
-                            expire=None,
-                        )
-                        if not result:
-                            logger.error(f"❌️ 初始化系统配置失败: {redis_key}")
-                            raise CustomException(msg="初始化系统配置失败")
-                except Exception as e:
-                    logger.error(f"❌️ 初始化系统配置失败: {e}")
-                    raise CustomException(msg="初始化系统配置失败") from e
+                return await ParamsCRUD(init_auth).get_list()
 
     @staticmethod
-    async def get_init_cache(redis: Redis, tenant_id: int = 1) -> list[dict]:
-        """
-        获取系统配置（无 auth）。
-
-        参数:
-        - redis (Redis): Redis 客户端实例
-        - tenant_id (int): 租户ID
-
-        返回:
-        - list[dict]: 系统配置字典列表
-        """
-        redis_keys = await RedisCURD(redis).get_keys(f"{RedisInitKeyConfig.SYSTEM_CONFIG.key}:{tenant_id}:*")
-        redis_configs = await RedisCURD(redis).mget(redis_keys)
-        configs = []
-        for config in redis_configs:
-            if not config:
-                continue
+    async def _sync_configs_to_redis(redis: Redis, config_obj: list) -> list[dict]:
+        """将 DB 配置写入 Redis，返回对应的 dict 列表。"""
+        configs: list[dict] = []
+        for config in config_obj:
+            redis_key = f"{RedisInitKeyConfig.SYSTEM_CONFIG.key}:{config.tenant_id}:{config.config_key}"
+            out = ParamsOutSchema.model_validate(config)
+            payload = out.model_dump(mode="json")
             try:
-                new_config = json.loads(config)
-                configs.append(new_config)
+                await RedisCURD(redis).set(redis_key, json.dumps(payload, ensure_ascii=False))
+                configs.append(out.model_dump())
             except Exception as e:
-                logger.error(f"解析系统配置数据失败: {e}")
-                continue
-
-        # 如果 Redis 中没有数据，从数据库中加载并缓存
-        if not configs:
-            async with async_db_session() as session:
-                async with session.begin():
-                    init_auth = AuthSchema(db=session, check_data_scope=False)
-                    config_obj = await ParamsCRUD(init_auth).get_list()
-                    if config_obj:
-                        try:
-                            for config in config_obj:
-                                redis_key = f"{RedisInitKeyConfig.SYSTEM_CONFIG.key}:{tenant_id}:{config.config_key}"
-                                out = ParamsOutSchema.model_validate(config)
-                                config_obj_dict = out.model_dump()
-                                redis_payload = out.model_dump(mode="json")
-                                value = json.dumps(redis_payload, ensure_ascii=False)
-                                result = await RedisCURD(redis).set(
-                                    key=redis_key,
-                                    value=value,
-                                    expire=None,
-                                )
-                                if not result:
-                                    logger.error(f"❌️ 缓存系统配置失败: {config_obj_dict}")
-                                configs.append(config_obj_dict)
-                        except Exception as e:
-                            logger.error(f"❌️ 加载系统配置失败: {e}")
-
+                logger.error(f"❌️ 缓存系统配置失败: {redis_key}: {e}")
         return configs
 
     @staticmethod
-    async def get_system_config_for_middleware(redis: Redis) -> dict:
+    async def init_cache(redis: Redis) -> None:
+        """启动时初始化系统参数到 Redis。"""
+        config_obj = await ParamsService._load_all_configs_from_db()
+        if not config_obj:
+            raise CustomException(msg="该数据不存在")
+        await ParamsService._sync_configs_to_redis(redis, config_obj)
+
+    @staticmethod
+    async def get_init_cache(redis: Redis, tenant_id: int = 1) -> list[dict]:
+        """从 Redis 读取系统配置；为空时自动回源 DB。"""
+        redis_keys = await RedisCURD(redis).get_keys(f"{RedisInitKeyConfig.SYSTEM_CONFIG.key}:{tenant_id}:*")
+        redis_configs = await RedisCURD(redis).mget(redis_keys)
+        configs = []
+        for raw in redis_configs:
+            if not raw:
+                continue
+            try:
+                configs.append(json.loads(raw))
+            except Exception as e:
+                logger.error(f"解析系统配置数据失败: {e}")
+
+        if not configs:
+            config_obj = await ParamsService._load_all_configs_from_db()
+            if config_obj:
+                configs = await ParamsService._sync_configs_to_redis(redis, config_obj)
+        return configs
+
+    @staticmethod
+    async def get_system_config_for_middleware(redis: Redis, tenant_id: int = 1) -> dict:
         """
-        获取中间件所需的系统配置（带 60 秒内存缓存，避免每请求查 Redis）。
+        获取中间件 / 调度器所需的系统配置（带 60 秒内存缓存，按租户隔离）。
 
         参数:
         - redis (Redis): Redis 客户端实例
+        - tenant_id (int): 租户 ID
 
         返回:
-        - dict: 包含演示模式、IP白名单、API白名单和IP黑名单的配置字典
+        - dict: 包含 MIDDLEWARE_CONFIG_KEYS 中所有 key 的解析后值。
         """
-        now = time.monotonic()
-        if _mid_config_cache["data"] and now - _mid_config_cache["ts"] < _MID_CONFIG_TTL:
-            return _mid_config_cache["data"]
+        cached = _mid_config_cache.get(tenant_id)
+        if cached and time.monotonic() - cached[0] < _MID_CONFIG_TTL:
+            return cached[1]
 
-        config_result = await ParamsService._fetch_system_config_for_middleware(redis)
-        _mid_config_cache["data"] = config_result
-        _mid_config_cache["ts"] = now
-        return config_result
+        config = await ParamsService._fetch_system_config_for_middleware(redis, tenant_id)
+        _mid_config_cache[tenant_id] = (time.monotonic(), config)
+        return config
 
     @staticmethod
-    async def _fetch_system_config_for_middleware(redis: Redis) -> dict:
-        # 定义需要获取的配置键
-        config_keys = [
-            f"{RedisInitKeyConfig.SYSTEM_CONFIG.key}:1:demo_enable",
-            f"{RedisInitKeyConfig.SYSTEM_CONFIG.key}:1:ip_white_list",
-            f"{RedisInitKeyConfig.SYSTEM_CONFIG.key}:1:white_api_list_path",
-            f"{RedisInitKeyConfig.SYSTEM_CONFIG.key}:1:ip_black_list",
-        ]
+    async def _fetch_system_config_for_middleware(redis: Redis, tenant_id: int = 1) -> dict:
+        """从 Redis 批量拉取并解析 MIDDLEWARE_CONFIG_KEYS 中的配置。
 
-        # 批量获取配置
+        停用（status=1）的配置视为未配置，使用默认值。
+        """
+        config_keys = [
+            f"{RedisInitKeyConfig.SYSTEM_CONFIG.key}:{tenant_id}:{key}"
+            for key in MIDDLEWARE_CONFIG_KEYS
+        ]
         config_values = await RedisCURD(redis).mget(config_keys)
 
-        # 初始化默认配置
-        config_result = {
-            "demo_enable": False,
-            "ip_white_list": [],
-            "white_api_list_path": [],
-            "ip_black_list": [],
-        }
+        result: dict[str, object] = {}
+        for key, raw in zip(MIDDLEWARE_CONFIG_KEYS, config_values, strict=True):
+            if not raw:
+                result[key] = _default_for(key)
+                continue
+            try:
+                payload = json.loads(raw)
+            except json.JSONDecodeError:
+                logger.error("解析系统配置 %s 失败", key)
+                result[key] = _default_for(key)
+                continue
 
-        # 解析演示模式配置
-        if config_values[0]:
-            try:
-                demo_config = json.loads(config_values[0])
-                config_result["demo_enable"] = (
-                    demo_config.get("config_value", False) if isinstance(demo_config, dict) else False
-                )
-            except json.JSONDecodeError:
-                logger.error("解析演示模式配置失败")
+            if not isinstance(payload, dict):
+                result[key] = _default_for(key)
+                continue
 
-        # 解析IP白名单配置
-        if config_values[1]:
-            try:
-                ip_white_config = json.loads(config_values[1])
-                # 确保是列表类型
-                config_result["ip_white_list"] = json.loads(ip_white_config.get("config_value", []))
-            except json.JSONDecodeError:
-                logger.error("解析IP白名单配置失败")
-        # 解析IP黑名单
-        # 解析API路径白名单
-        if config_values[2]:
-            try:
-                white_api_config = json.loads(config_values[2])
-                # 确保是列表类型
-                config_result["white_api_list_path"] = json.loads(white_api_config.get("config_value", []))
-            except json.JSONDecodeError:
-                logger.error("解析API白名单配置失败")
+            # 停用的配置视为未启用，使用默认值
+            if payload.get("status", 0) != 0:
+                result[key] = _default_for(key)
+                continue
 
-        # 解析IP黑名单
-        if config_values[3]:
-            try:
-                black_ip_config = json.loads(config_values[3])
-                # 确保是列表类型
-                config_result["ip_black_list"] = json.loads(black_ip_config.get("config_value", []))
-            except json.JSONDecodeError:
-                logger.error("解析IP黑名单配置失败")
-        return config_result
+            result[key] = _parse_value(key, payload.get("config_value"))
+
+        return result

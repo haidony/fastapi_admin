@@ -132,6 +132,7 @@ class OrderTypeEnum(str, Enum):
     """订单类型"""
 
     NEW = "new"
+    BUY = "buy"
     RENEW = "renew"
     UPGRADE = "upgrade"
     DOWNGRADE = "downgrade"

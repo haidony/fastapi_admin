@@ -63,15 +63,16 @@ SCHEDULER_STATUS_PAUSED = 2
 scheduler = AsyncIOScheduler()
 scheduler.configure(
     jobstores={
-        "default": MemoryJobStore(),
-        "sqlalchemy": SQLAlchemyJobStore(url=settings.DB_URI, engine=engine),
-        "redis": RedisJobStore(
+        # 多 Worker 部署时必须使用 RedisJobStore，保证任务只被一个 Worker 执行
+        "default": RedisJobStore(
             host=settings.REDIS_HOST,
             port=int(settings.REDIS_PORT),
-            username=settings.REDIS_USER,
-            password=settings.REDIS_PASSWORD,
+            username=settings.REDIS_USER or None,
+            password=settings.REDIS_PASSWORD or None,
             db=int(settings.REDIS_DB_NAME),
         ),
+        "sqlalchemy": SQLAlchemyJobStore(url=settings.DB_URI, engine=engine),
+        "memory": MemoryJobStore(),
     },
     executors={
         "default": AsyncIOExecutor(),
@@ -479,42 +480,19 @@ class SchedulerUtil:
     @classmethod
     def _update_scheduler_status(cls, status: int) -> None:
         """
-        更新调度器状态到系统参数
+        仅记录调度器状态到内存（不再写入 sys_param 表）。
+        前端通过 /scheduler/status 接口直接从 SchedulerUtil 读取，避免污染配置表。
 
         参数:
         - status (int): 调度器状态 (0: stopped / 1: running / 2: paused)
         """
-        try:
-            from sqlalchemy.orm import Session
-
-            from app.api.v1.module_system.params.model import ParamsModel
-
-            with Session(engine) as session:
-                param = (
-                    session
-                    .query(ParamsModel)
-                    .filter(ParamsModel.config_key == "scheduler_status")
-                    .first()
-                )
-                if param:
-                    param.config_value = str(status)
-                else:
-                    param = ParamsModel(
-                        config_name="调度器状态",
-                        config_key="scheduler_status",
-                        config_value=str(status),
-                        config_type=True,
-                    )
-                    session.add(param)
-                session.commit()
-                logger.info(f"调度器状态已更新: {status}")
-        except Exception as e:
-            logger.error(f"更新调度器状态失败: {e!s}", exc_info=True)
+        cls._last_scheduler_status = status
+        logger.info(f"调度器状态变更: {status}")
 
     @classmethod
     def _update_executor_info(cls, alias: str | None, action: str) -> None:
         """
-        更新执行器信息到系统参数
+        仅记录执行器状态到内存（不再写入 sys_param 表）。
 
         参数:
         - alias (str | None): 执行器别名
@@ -523,39 +501,12 @@ class SchedulerUtil:
         if not alias:
             logger.warning("执行器别名为空，跳过更新")
             return
-
-        try:
-            from sqlalchemy.orm import Session
-
-            from app.api.v1.module_system.params.model import ParamsModel
-
-            key = f"executor_{alias}"
-            with Session(engine) as session:
-                param = session.query(ParamsModel).filter(ParamsModel.config_key == key).first()
-                if action == "added":
-                    if param:
-                        param.config_value = "active"
-                    else:
-                        param = ParamsModel(
-                            config_name=f"执行器 {alias}",
-                            config_key=key,
-                            config_value="active",
-                            config_type=True,
-                        )
-                        session.add(param)
-                    logger.debug(f"执行器 {alias} 已标记为活跃")
-                elif action == "removed":
-                    if param:
-                        param.config_value = "inactive"
-                    logger.debug(f"执行器 {alias} 已标记为非活跃")
-                session.commit()
-        except Exception as e:
-            logger.error(f"更新执行器信息失败: {e!s}", exc_info=True)
+        logger.debug(f"执行器 {alias} {action}")
 
     @classmethod
     def _update_jobstore_info(cls, alias: str | None, action: str) -> None:
         """
-        更新 JobStore 信息到系统参数
+        仅记录 JobStore 状态到内存（不再写入 sys_param 表）。
 
         参数:
         - alias (str | None): JobStore 别名
@@ -564,34 +515,7 @@ class SchedulerUtil:
         if not alias:
             logger.warning("JobStore 别名为空，跳过更新")
             return
-
-        try:
-            from sqlalchemy.orm import Session
-
-            from app.api.v1.module_system.params.model import ParamsModel
-
-            key = f"jobstore_{alias}"
-            with Session(engine) as session:
-                param = session.query(ParamsModel).filter(ParamsModel.config_key == key).first()
-                if action == "added":
-                    if param:
-                        param.config_value = "active"
-                    else:
-                        param = ParamsModel(
-                            config_name=f"JobStore {alias}",
-                            config_key=key,
-                            config_value="active",
-                            config_type=True,
-                        )
-                        session.add(param)
-                    logger.debug(f"JobStore {alias} 已标记为活跃")
-                elif action == "removed":
-                    if param:
-                        param.config_value = "inactive"
-                    logger.debug(f"JobStore {alias} 已标记为非活跃")
-                session.commit()
-        except Exception as e:
-            logger.error(f"更新 JobStore 信息失败: {e!s}", exc_info=True)
+        logger.debug(f"JobStore {alias} {action}")
 
     @classmethod
     def _clear_all_job_logs(cls) -> None:

@@ -1,115 +1,135 @@
-import re
+import ipaddress
 
 import httpx
+from starlette.requests import Request
 
 from app.config.setting import settings
 from app.core.logger import logger
 
+# 归属地缓存：IP 几乎不变化，缓存 7 天可显著减少外网请求
+_IP_CACHE_TTL = 7 * 24 * 3600
+# 硬超时（秒），避免外网查询阻塞主流程
+_IP_QUERY_TIMEOUT = 3.0
+
+
+def get_client_ip(request: Request) -> str | None:
+    """从请求中解析客户端真实 IP。优先取 X-Forwarded-For 第一个，回退到 ``request.client.host``。
+
+    返回 None 表示客户端不存在（如 UNIX socket 场景）。
+    """
+    xff = request.headers.get("X-Forwarded-For")
+    if xff:
+        return xff.split(",")[0].strip()
+    return request.client.host if request.client else None
+
 
 class IpLocalUtil:
-    """
-    获取IP归属地工具类
-    """
+    """获取 IP 归属地工具类（带 Redis 缓存、硬超时、降级）。"""
 
     @classmethod
     def is_valid_ip(cls, ip: str) -> bool:
-        """
-        校验IP格式是否合法。
-
-        参数:
-        - ip (str): IP地址。
-
-        返回:
-        - bool: 是否合法。
-        """
-        ip_pattern = (
-            r"^((25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$"
-        )
-        return bool(re.match(ip_pattern, ip))
+        try:
+            ipaddress.ip_address(ip)
+            return True
+        except ValueError:
+            return False
 
     @classmethod
     def is_private_ip(cls, ip: str) -> bool:
-        """
-        判断是否为内网IP。
-
-        参数:
-        - ip (str): IP地址。
-
-        返回:
-        - bool: 是否为内网IP。
-        """
-        priv_pattern = r"^(127\.|10\.|172\.(1[6-9]|2[0-9]|3[01])\.|192\.168\.)"
-        return bool(re.match(priv_pattern, ip))
+        try:
+            return ipaddress.ip_address(ip).is_private
+        except ValueError:
+            return False
 
     @classmethod
-    async def resolve_location_for_log(cls, ip: str | None) -> str | None:
-        """
-        登录与操作日志写入 ``login_location`` 时的统一解析入口。
+    async def resolve_location_for_log(cls, redis, ip: str | None) -> str | None:
+        """登录日志写入入口：仅返回可同步获取的值（内网/缓存/降级），
 
-        与 ``settings.DEBUG`` 联动：如果 ``DEBUG`` 为 ``False`` 时，关闭解析，不请求外网，仅返回占位描述，
-        避免登录 POST 在 ``OperationLogRoute`` 收尾阶段因外网查询变慢。
-
-        参数:
-        - ip (str | None): 客户端 IP，可为空。
-
-        返回:
-        - str | None: 展示用归属地文案；无需解析时可能为 ``None``。
+        外网查询由后台任务异步执行（见 ``resolve_location_async``）。
         """
         if not ip:
             return None
-        if settings.DEBUG or not settings.IP_LOCATION_ENABLE:
+        if not settings.IP_LOCATION_ENABLE:
             return "内网IP" if cls.is_private_ip(ip) else "未解析(已关闭归属地查询)"
-        return await cls.get_ip_location(ip)
+        if cls.is_private_ip(ip):
+            return "内网IP"
+        if redis:
+            cached = await cls._cache_get(redis, ip)
+            if cached is not None:
+                return cached
+        return "归属地查询中"
 
     @classmethod
-    async def get_ip_location(cls, ip: str) -> str | None:
-        """
-        获取IP归属地信息。
-
-        参数:
-        - ip (str): IP地址。
-
-        返回:
-        - str | None: IP归属地信息，失败时返回"未知"或None。
-        """
-        # 校验IP格式
+    async def resolve_location_async(cls, redis, ip: str) -> str:
+        """异步查询归属地（含缓存、降级、硬超时）。"""
         if not cls.is_valid_ip(ip):
-            logger.error(f"IP格式不合法: {ip}")
             return "未知"
-
-        # 内网IP直接返回
         if cls.is_private_ip(ip):
             return "内网IP"
 
-        try:
-            async with httpx.AsyncClient(timeout=settings.HTTPX_DEFAULT_TIMEOUT) as client:
-                # 首选：ip9.com.cn API
-                url = f"https://ip9.com.cn/get?ip={ip}"
-                response = await cls._make_api_request(client, url)
-                if response and response.json().get("ret") == 200:
-                    result = response.json().get("data", {})
-                    return f"{result.get('country', '')}-{result.get('prov', '')}-{result.get('city', '')}-{result.get('area', '')}-{result.get('isp', '')}"
+        cached = await cls._cache_get(redis, ip) if redis else None
+        if cached is not None:
+            return cached
 
-        except Exception as e:
-            logger.error(f"获取IP归属地失败: {e}")
-            return "未知"
+        result = await cls._query_with_timeout(ip)
+        if redis:
+            await cls._cache_set(redis, ip, result)
+        return result
 
     @classmethod
-    async def _make_api_request(cls, client: httpx.AsyncClient, url: str):
-        """
-        单独的 API 请求方法，包含重试机制。
+    async def _query_with_timeout(cls, ip: str) -> str:
+        """在硬超时内尝试主备两个 API，全部失败返回未知。"""
+        apis = [
+            ("https://ip9.com.cn/get", cls._parse_ip9),
+            ("http://ip-api.com/json", cls._parse_ipapi),
+        ]
+        for url, parser in apis:
+            try:
+                async with httpx.AsyncClient(timeout=_IP_QUERY_TIMEOUT) as client:
+                    resp = await client.get(
+                        url if "ip-api" in url else f"{url}?ip={ip}",
+                        params={} if "ip-api" in url else None,
+                    )
+                    if resp.status_code == 200:
+                        location = parser(resp.json())
+                        if location:
+                            return location
+            except Exception as e:
+                logger.warning(f"IP 归属地 API 失败: {url} - {e}")
+        return "未知"
 
-        参数:
-        - client (AsyncClient): httpx 异步客户端。
-        - url (str): 请求 URL。
+    @staticmethod
+    def _parse_ip9(data: dict) -> str | None:
+        if data.get("ret") != 200:
+            return None
+        d = data.get("data") or {}
+        parts = [d.get("country"), d.get("prov"), d.get("city"), d.get("area"), d.get("isp")]
+        joined = "-".join(filter(None, parts))
+        return joined or None
 
-        返回:
-        - Response | None: 响应对象，失败时返回None。
-        """
+    @staticmethod
+    def _parse_ipapi(data: dict) -> str | None:
+        if data.get("status") != "success":
+            return None
+        parts = [data.get("country"), data.get("regionName"), data.get("city"), data.get("isp")]
+        joined = "-".join(filter(None, parts))
+        return joined or None
+
+    @staticmethod
+    async def _cache_get(redis, ip: str) -> str | None:
         try:
-            response = await client.get(url)
-            if response.status_code == 200:
-                return response
-        except Exception as e:
-            logger.error(f"IP 归属地 API 请求失败: {url} - {e}")
-        return None
+            from app.core.redis_crud import RedisCURD
+            value = await RedisCURD(redis).get(f"ip:location:{ip}")
+            if value is None:
+                return None
+            return value.decode("utf-8") if isinstance(value, bytes) else str(value)
+        except Exception:
+            return None
+
+    @staticmethod
+    async def _cache_set(redis, ip: str, value: str) -> None:
+        try:
+            from app.core.redis_crud import RedisCURD
+            await RedisCURD(redis).set(f"ip:location:{ip}", value, expire=_IP_CACHE_TTL)
+        except Exception:
+            pass

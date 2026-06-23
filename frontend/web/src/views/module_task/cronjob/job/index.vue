@@ -39,7 +39,7 @@
                   size="small"
                   effect="dark"
                 >
-                  {{ schedulerStatus.status }}
+                  {{ getSchedulerStatusLabel(schedulerStatus.status) }}
                 </ElTag>
               </div>
               <ElDivider direction="vertical" />
@@ -65,7 +65,7 @@
                 v-hasPerm="['module_task:cronjob:job:scheduler']"
                 type="success"
                 icon="VideoPlay"
-                :disabled="schedulerStatus.status !== 0"
+                :disabled="schedulerStatus.status !== '停止'"
                 size="small"
                 @click="handleStartScheduler"
               >
@@ -75,7 +75,7 @@
                 v-hasPerm="['module_task:cronjob:job:scheduler']"
                 type="warning"
                 icon="VideoPause"
-                :disabled="schedulerStatus.status !== 1"
+                :disabled="schedulerStatus.status !== '运行中'"
                 size="small"
                 @click="handlePauseScheduler"
               >
@@ -85,7 +85,7 @@
                 v-hasPerm="['module_task:cronjob:job:scheduler']"
                 type="primary"
                 icon="RefreshRight"
-                :disabled="schedulerStatus.status !== 2"
+                :disabled="schedulerStatus.status !== '暂停'"
                 size="small"
                 @click="handleResumeScheduler"
               >
@@ -95,7 +95,7 @@
                 v-hasPerm="['module_task:cronjob:job:scheduler']"
                 type="danger"
                 icon="SwitchButton"
-                :disabled="schedulerStatus.status === 0"
+                :disabled="schedulerStatus.status === '停止'"
                 size="small"
                 @click="handleShutdownScheduler"
               >
@@ -350,7 +350,7 @@ import { computed, nextTick, onMounted, ref } from "vue";
 import { Terminal, TerminalApi } from "vue-web-terminal";
 
 const schedulerStatus = ref<SchedulerStatus>({
-  status: 0,
+  status: "未知",
   is_running: false,
   job_count: 0,
 });
@@ -387,8 +387,8 @@ const jobSearchItems = computed<SearchFormItem[]>(() => [
       clearable: true,
       options: [
         { label: "运行中", value: 0 },
-        { label: "暂停", value: 1 },
-        { label: "停止", value: 2 },
+        { label: "暂停中", value: 1 },
+        { label: "已停止", value: 2 },
       ],
     },
     span: 6,
@@ -724,17 +724,21 @@ const executionLogDrawerVisible = ref(false);
 const jobStateVisible = ref(false);
 const jobStateData = ref<any>(null);
 
-function getSchedulerStatusType(status: number) {
+function getSchedulerStatusType(status: string) {
   switch (status) {
-    case 1:
+    case "运行中":
       return "success";
-    case 2:
+    case "暂停":
       return "warning";
-    case 0:
+    case "停止":
       return "danger";
     default:
       return "info";
   }
+}
+
+function getSchedulerStatusLabel(status: string) {
+  return status || "未知";
 }
 
 function getJobStatusType(status: number) {

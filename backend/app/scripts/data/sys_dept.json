@@ -80,62 +80,12 @@
     ]
   },
   {
-    "name": "星辰研发中心",
-    "code": "STAR_RND",
+    "name": "测试租户技术部",
+    "code": "TEST_TECH",
     "order": 1,
-    "tenant_id": 3,
+    "tenant_id": 2,
     "parent_id": null,
     "status": 0,
-    "description": "星辰科技研发部门",
-    "children": [
-      {
-        "name": "前端组",
-        "code": "STAR_FE",
-        "order": 1,
-        "tenant_id": 3,
-        "status": 0
-      },
-      {
-        "name": "后端组",
-        "code": "STAR_BE",
-        "order": 2,
-        "tenant_id": 3,
-        "status": 0
-      },
-      {
-        "name": "测试组",
-        "code": "STAR_QA",
-        "order": 3,
-        "tenant_id": 3,
-        "status": 0
-      }
-    ]
-  },
-  {
-    "name": "星辰市场部",
-    "code": "STAR_MKT",
-    "order": 2,
-    "tenant_id": 3,
-    "parent_id": null,
-    "status": 0,
-    "description": "星辰科技市场部门"
-  },
-  {
-    "name": "创新产品部",
-    "code": "INNO_PROD",
-    "order": 1,
-    "tenant_id": 4,
-    "parent_id": null,
-    "status": 0,
-    "description": "创新工坊产品团队"
-  },
-  {
-    "name": "创新技术部",
-    "code": "INNO_TECH",
-    "order": 2,
-    "tenant_id": 4,
-    "parent_id": null,
-    "status": 0,
-    "description": "创新工坊技术团队"
+    "description": "测试租户技术部门"
   }
 ]

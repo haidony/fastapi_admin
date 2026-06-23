@@ -17,7 +17,6 @@ from .schema import (
     WorkflowUpdateSchema,
 )
 
-
 # 工作流状态常量（与 WorkflowModel.status 保持一致：0:草稿 1:已发布 2:已归档）
 WORKFLOW_STATUS_DRAFT = 0
 WORKFLOW_STATUS_PUBLISHED = 1

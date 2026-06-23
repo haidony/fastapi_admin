@@ -202,6 +202,10 @@
           :items="pluginDetailItems"
           max-height="75vh"
         >
+          <template #icon>
+            <FaSvgIcon v-if="detailFormData.icon" :icon="detailFormData.icon" />
+            <span v-else>—</span>
+          </template>
           <template #status>
             <ElTag :type="detailFormData.status === 0 ? 'success' : 'danger'">
               {{ detailFormData.status === 0 ? "启用" : "停用" }}
@@ -453,6 +457,7 @@ const detailFormData = ref<PluginTable>({} as PluginTable);
 const pluginDetailItems = [
   { label: "插件名称", prop: "name" },
   { label: "插件编码", prop: "code" },
+  { label: "图标", prop: "icon", slot: "icon" },
   { label: "版本", prop: "version" },
   { label: "分类", prop: "category" },
   { label: "作者", prop: "author" },

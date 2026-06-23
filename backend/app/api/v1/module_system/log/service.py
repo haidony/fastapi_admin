@@ -69,21 +69,21 @@ class OperationLogService:
     async def cleanup_operation_log() -> None:
         from datetime import datetime, timedelta
 
-        from sqlalchemy import delete, select
+        from sqlalchemy import delete
 
+        from app.api.v1.module_system.params.service import ParamsService
+        from app.core.ap_scheduler import SchedulerUtil
         from app.core.database import async_db_session
 
         from .model import LoginLogModel, OperationLogModel
 
         retention_days = 90
         try:
-            from app.api.v1.module_system.params.model import ParamsModel
-
-            async with async_db_session() as _s:
-                result = await _s.execute(select(ParamsModel.config_value).where(ParamsModel.config_key == "operation_log_retention_days").limit(1))
-                row = result.scalar()
-                if row is not None:
-                    retention_days = int(row)
+            redis = SchedulerUtil.redis_instance
+            if redis:
+                # 调度任务是平台级别的，统一使用平台租户（id=1）的配置
+                config = await ParamsService.get_system_config_for_middleware(redis, tenant_id=1)
+                retention_days = int(config.get("operation_log_retention_days") or 90)
         except Exception:
             pass
 

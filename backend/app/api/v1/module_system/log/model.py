@@ -50,7 +50,7 @@ class OperationLogModel(ModelMixin, TenantMixin, UserMixin):
     __table_args__: dict[str, str] = {"comment": "操作日志表"}
     __loader_options__: list[str] = ["created_by", "updated_by", "deleted_by", "tenant_by"]
 
-    status: Mapped[int] = mapped_column(Integer, default=0, nullable=False, comment="状态(0:启动 1:停用)", index=True)
+    status: Mapped[int] = mapped_column(Integer, default=0, nullable=False, comment="操作状态(0:成功 1:失败)", index=True)
     description: Mapped[str | None] = mapped_column(Text, default=None, nullable=True, comment="备注")
     request_path: Mapped[str] = mapped_column(String(255), comment="请求路径")
     request_method: Mapped[str] = mapped_column(String(10), comment="请求方式")
